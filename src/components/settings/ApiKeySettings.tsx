@@ -136,23 +136,8 @@ export function ApiKeySettings({ visible, onClose }: Props) {
     const mapKey = (k: KeyItem): MenuRow[] => {
       const sources = keys[k.id];
       if (!sources) return [];
-      // Count keys from the active source (used for rotation)
-      let activeCount = 0;
-      if (sources.active === "env") {
-        const envVal = process.env[k.envVar];
-        if (envVal) {
-          activeCount = envVal
-            .split(",")
-            .map((s: string) => s.trim())
-            .filter(Boolean).length;
-        }
-      } else if (sources.active === "keychain") {
-        activeCount = 1;
-      } else if (sources.active === "file") {
-        const pooled = getPooledKeys(k.id);
-        activeCount = pooled.length;
-      }
-      const metaExtra = activeCount > 1 ? ` [${activeCount} keys]` : "";
+      const allKeys = getPooledKeys(k.id);
+      const metaExtra = allKeys.length > 1 ? ` [${allKeys.length} keys]` : "";
       const out: MenuRow[] = [
         {
           id: k.id,
@@ -245,7 +230,7 @@ export function ApiKeySettings({ visible, onClose }: Props) {
     }
     // Check if this is an additional key (if input starts with "add:")
     const isAddMode = inputTarget.startsWith("add:");
-    const targetKey = isAddMode ? (inputTarget.slice(4) as SecretKey) : inputTarget;
+    const targetKey = isAddMode ? inputTarget.slice(4) as SecretKey : inputTarget;
     const keyValue = inputValue.trim();
 
     if (isAddMode) {
@@ -255,8 +240,7 @@ export function ApiKeySettings({ visible, onClose }: Props) {
     } else {
       const result = setSecret(targetKey, keyValue);
       if (result.success) {
-        const where =
-          result.storage === "keychain" ? "OS keychain" : (result.path ?? "secrets.json");
+        const where = result.storage === "keychain" ? "OS keychain" : (result.path ?? "secrets.json");
         popFlash("ok", `Saved to ${where}`);
       } else {
         popFlash("err", "Failed to save key");
