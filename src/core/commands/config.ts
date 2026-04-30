@@ -308,7 +308,6 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
 
   const timeoutOptions = [
     // Tool timeout
-    { value: "sep0", label: "─ Tool Timeout ─", disabled: true },    // Tool timeout
     { value: "tool:1", label: "1 min" },
     { value: "tool:2", label: "2 min", description: "default" },
     { value: "tool:5", label: "5 min" },
@@ -325,7 +324,6 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
 
 
     // Watchdog first chunk timeout (seconds)
-
     { value: "wd-first:5", label: "5s" },
     { value: "wd-first:15", label: "15s" },
     { value: "wd-first:30", label: "30s" },
@@ -333,7 +331,8 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
     { value: "wd-first:120", label: "120s" },
     { value: "wd-first:180", label: "180s", description: "default" },
     // Separator
-    { value: "sep_wd_first", label: "─ Chunk Timeout ─", disabled: true }
+    { value: "sep_wd_first", label: "─ Chunk Timeout ─", disabled: true },
+    // Watchdog chunk timeout (seconds)
     { value: "wd-chunk:5", label: "5s" },
     { value: "wd-chunk:15", label: "15s" },
     { value: "wd-chunk:30", label: "30s" },
@@ -341,7 +340,8 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
     { value: "wd-chunk:120", label: "120s", description: "default" },
     { value: "wd-chunk:180", label: "180s" },
     // Separator
-    { value: "sep_wd_chunk", label: "─ Tool Max Timeout ─", disabled: true }
+    { value: "sep_wd_chunk", label: "─ Tool Max Timeout ─", disabled: true },
+    // Watchdog tool max timeout (seconds)
     { value: "wd-tool:60", label: "1 min" },
     { value: "wd-tool:300", label: "5 min" },
     { value: "wd-tool:600", label: "10 min" },
@@ -349,11 +349,12 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
     { value: "wd-tool:1800", label: "30 min" },
     { value: "wd-tool:3600", label: "60 min" },
     // Separator
-    { value: "sep_wd_tool", label: "─ Force-Resolve Timeout ─", disabled: true }
+    { value: "sep_wd_tool", label: "─ Force-Resolve Timeout ─", disabled: true },
+    // Watchdog force-resolve timeout (seconds)
     { value: "wd-force:1", label: "1s" },
     { value: "wd-force:5", label: "5s", description: "default" },
     { value: "wd-force:10", label: "10s" },
-{ value: "wd-force:30", label: "30s" },
+    { value: "wd-force:30", label: "30s" },
   ];
 
   // Determine current values for highlighting
@@ -477,7 +478,7 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
           { value: "wd-force:1", label: "1s" },
           { value: "wd-force:5", label: "5s", description: "default" },
           { value: "wd-force:10", label: "10s" },
-          { value: "wd-force:30", label: "30s" },
+              { value: "wd-force:30", label: "30s" },
         ],
         onSelect: (value) => {
           const sec = Number(value.split(":")[1]);
