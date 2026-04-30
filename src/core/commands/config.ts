@@ -298,7 +298,7 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
   const toolMaxMin = (wd.toolMaxMs ?? 900_000) / 60_000;
   const forceResolveSec = (wd.forceResolveMs ?? 5_000) / 1000;
 
-// Current values for sub-pickers
+  // Current values for sub-pickers
   const wdFirst = `wd-first:${(wd.firstChunkMs ?? 180_000) / 1000}`;
   const wdChunk = `wd-chunk:${(wd.chunkMs ?? 120_000) / 1000}`;
   const wdTool = `wd-tool:${(wd.toolMaxMs ?? 900_000) / 60_000}`;
@@ -480,9 +480,9 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
     title: "Timeouts & Watchdog",
     icon: icon("clock"),
     currentValue,
-scopeEnabled: false,
-      options: timeoutOptions,
-      onSelect: (value) => {
+    scopeEnabled: false,
+    options: timeoutOptions,
+    onSelect: (value) => {
       const handler = timeoutPickers[value];
       if (handler) {
         handler("", ctx);
@@ -498,99 +498,6 @@ scopeEnabled: false,
     },
   });
 }
-          const sec = Number(value.split(":")[1]);
-          ctx.saveToScope({ watchdogTimeouts: { ...wd, firstChunkMs: sec * 1000 } }, "global");
-          sysMsg(ctx, `Watchdog first-chunk timeout → ${sec}s (global)`);
-        },
-      });
-    },
-    "wd-chunk": (_input: string, ctx: CommandContext) => {
-      ctx.openCommandPicker({
-        title: "Watchdog — Chunk Timeout",
-        icon: icon("clock"),
-        currentValue: wdChunk,
-        scopeEnabled: false,
-        options: [
-          { value: "wd-chunk:5", label: "5s" },
-          { value: "wd-chunk:15", label: "15s" },
-          { value: "wd-chunk:30", label: "30s" },
-          { value: "wd-chunk:60", label: "60s" },
-          { value: "wd-chunk:120", label: "120s", description: "default" },
-          { value: "wd-chunk:180", label: "180s" },
-        ],
-        onSelect: (value) => {
-          const sec = Number(value.split(":")[1]);
-          ctx.saveToScope({ watchdogTimeouts: { ...wd, chunkMs: sec * 1000 } }, "global");
-          sysMsg(ctx, `Watchdog chunk timeout → ${sec}s (global)`);
-        },
-      });
-    },
-    "wd-tool": (_input: string, ctx: CommandContext) => {
-      ctx.openCommandPicker({
-        title: "Watchdog — Tool Max Timeout",
-        icon: icon("clock"),
-        currentValue: wdTool,
-        scopeEnabled: false,
-        options: [
-          { value: "wd-tool:60", label: "1 min" },
-          { value: "wd-tool:300", label: "5 min" },
-          { value: "wd-tool:600", label: "10 min" },
-          { value: "wd-tool:900", label: "15 min", description: "default" },
-          { value: "wd-tool:1800", label: "30 min" },
-          { value: "wd-tool:3600", label: "60 min" },
-        ],
-        onSelect: (value) => {
-          const sec = Number(value.split(":")[1]);
-          ctx.saveToScope({ watchdogTimeouts: { ...wd, toolMaxMs: sec * 1000 } }, "global");
-          sysMsg(ctx, `Watchdog tool-max timeout → ${sec}s (global)`);
-        },
-      });
-    },
-    "wd-force": (_input: string, ctx: CommandContext) => {
-      ctx.openCommandPicker({
-        title: "Watchdog — Force-Resolve Timeout",
-        icon: icon("clock"),
-        currentValue: wdForce,
-        scopeEnabled: false,
-        options: [
-          { value: "wd-force:1", label: "1s" },
-          { value: "wd-force:5", label: "5s", description: "default" },
-          { value: "wd-force:10", label: "10s" },
-          { value: "wd-force:30", label: "30s" },
-        ],
-        onSelect: (value) => {
-          const sec = Number(value.split(":")[1]);
-          ctx.saveToScope({ watchdogTimeouts: { ...wd, forceResolveMs: sec * 1000 } }, "global");
-          sysMsg(ctx, `Watchdog force-resolve timeout → ${sec}s (global)`);
-        },
-      });
-    },
-  };
-
-// Top-level categories picker
-   ctx.openCommandPicker({
-     title: "Timeouts & Watchdog",
-     icon: icon("clock"),
-     currentValue,
-     scopeEnabled: false,
-options: timeoutOptions,
-      onSelect: (value) => {
-        const handler = timeoutPickers[value];
-        if (handler) {
-          handler("", ctx);
-          return;
-        }
-        if (value === "watchdog:on") {
-          ctx.saveToScope({ watchdog: true }, "global");
-          sysMsg(ctx, "Watchdog enabled (global)");
-        } else if (value === "watchdog:off") {
-          ctx.saveToScope({ watchdog: false }, "global");
-          sysMsg(ctx, "Watchdog disabled (global)");
-        }
-      },
-    });
-  }
-
 function handleLockIn(_input: string, ctx: CommandContext): void {
   const next = !ctx.lockIn;
   ctx.setLockIn(next);
