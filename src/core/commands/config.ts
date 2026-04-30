@@ -306,6 +306,7 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
 
   const timeoutOptions = [
     // Tool timeout
+    { value: "sep0", label: "─ Tool Timeout ─", disabled: true },    // Tool timeout
     { value: "tool:1", label: "1 min" },
     { value: "tool:2", label: "2 min", description: "default" },
     { value: "tool:5", label: "5 min" },
