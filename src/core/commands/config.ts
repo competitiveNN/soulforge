@@ -325,6 +325,7 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
 
 
     // Watchdog first chunk timeout (seconds)
+
     { value: "wd-first:5", label: "5s" },
     { value: "wd-first:15", label: "15s" },
     { value: "wd-first:30", label: "30s" },
