@@ -305,10 +305,10 @@ describe("/timeouts command registration", () => {
 		register(map as any);
 		const expected = [
 			"/chat-style", "/mode", "/nvim-config", "/verbose", "/reasoning",
-			"/compact settings", "/compaction", "/agent-features", "/instructions",
+			"/compaction", "/compaction", "/agent-features", "/instructions",
 			"/diff-style", "/editor split", "/split", "/vim-hints", "/model-scope",
-			"/font nerd", "/font set", "/settings", "/lock-in", "/theme",
-			"/timeouts", "/watchdog",
+"/font nerd", "/font set", "/settings", "/lock-in", "/theme",
+		"/timeouts",
 		];
 		for (const cmd of expected) {
 			expect(map.has(cmd)).toBe(true);
@@ -361,7 +361,7 @@ describe("handleTimeouts (real handler)", () => {
 	}
 
 	test("calls openCommandPicker with correct shape", () => {
-		const handler = getHandler();
+const handler = getHandler();
 		const { makeCtx, pickerCfgs } = mockCtxChain();
 		handler("", makeCtx());
 
@@ -373,7 +373,7 @@ describe("handleTimeouts (real handler)", () => {
 		expect(values).toEqual(["tool-timeout", "watchdog-toggle", "wd-first", "wd-chunk", "wd-tool", "wd-force"]);
 	});
 
-	test("top-level option descriptions reflect current settings", () => {
+test("top-level option descriptions reflect current settings", () => {
 		const handler = getHandler();
 		const { makeCtx, pickerCfgs } = mockCtxChain();
 		handler("", makeCtx());
@@ -386,11 +386,41 @@ describe("handleTimeouts (real handler)", () => {
 	});
 
 	test("selecting tool-timeout opens sub-picker with tool options", () => {
+		let options: any[] = [];
+		const ctx = {
+			openCommandPicker: (cfg: any) => { options = cfg.options; },
+			saveToScope: () => {},
+			detectScope: () => "global",
+		};
+		handler("", ctx);
+		const values = options.map((o: any) => o.value);
+		// Should have tool timeouts, watchdog toggle, and watchdog timeout options
+		expect(values.some((v: string) => v.startsWith("tool:"))).toBe(true);
+		expect(values.some((v: string) => v.startsWith("watchdog:"))).toBe(true);
+		expect(values.some((v: string) => v.startsWith("wd-"))).toBe(true);
+	});
+
+	test("default option (tool:2) is marked", () => {
 		const handler = getHandler();
 		const { makeCtx, pickerCfgs } = mockCtxChain();
 		const ctx = makeCtx();
 
 		handler("", ctx);
+		// First cfg is top-level
+		const topSelect = pickerCfgs[0].onSelect;
+		topSelect("tool-timeout");
+
+		// Second cfg is the sub-picker
+		const sub = pickerCfgs[1];
+		expect(sub.title).toBe("Tool Timeout");
+		const values = sub.options.map((o: any) => o.value);
+		expect(values).toEqual(["tool:1", "tool:2", "tool:5", "tool:10", "tool:20", "tool:0"]);
+		const defaultOpt = sub.options.find((o: any) => o.value === "tool:2");
+		const handler = getHandler();
+		const { makeCtx, pickerCfgs } = mockCtxChain();
+		const ctx = makeCtx();
+
+handler("", ctx);
 		// First cfg is top-level
 		const topSelect = pickerCfgs[0].onSelect;
 		topSelect("tool-timeout");
@@ -425,7 +455,7 @@ describe("handleTimeouts (real handler)", () => {
 		const subSel = pickers[1].onSelect;
 		subSel("tool:5");
 
-		expect(saved).toHaveLength(1);
+expect(saved).toHaveLength(1);
 		expect(saved[0].scope).toBe("global");
 		expect(saved[0].patch).toEqual({ toolTimeout: 5 });
 	});
@@ -440,7 +470,7 @@ describe("handleTimeouts (real handler)", () => {
 		};
 		handler("", ctx);
 
-		pickers[0].onSelect("tool-timeout");
+pickers[0].onSelect("tool-timeout");
 		pickers[1].onSelect("tool:0");
 
 		expect(saved[0].patch.toolTimeout).toBe(0);
@@ -458,7 +488,7 @@ describe("handleTimeouts (real handler)", () => {
 		};
 		handler("", ctx);
 
-		pickers[0].onSelect("tool-timeout");
+pickers[0].onSelect("tool-timeout");
 		for (const v of ["tool:1", "tool:2", "tool:5", "tool:10", "tool:20", "tool:0"]) {
 			pickers[1].onSelect(v);
 		}
@@ -475,10 +505,11 @@ describe("handleTimeouts (real handler)", () => {
 		};
 		handler("", ctx);
 
-		pickers[0].onSelect("tool-timeout");
+pickers[0].onSelect("tool-timeout");
 		pickers[1].onSelect("tool:5");
 		pickers[1].onSelect("tool:0");
 
+		expect(messages.some((m: string) => m.includes("5m"))).toBe(true);
 		expect(messages.some((m: string) => m.includes("5m"))).toBe(true);
 		expect(messages.some((m: string) => m.includes("none"))).toBe(true);
 	});

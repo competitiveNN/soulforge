@@ -2420,9 +2420,8 @@ const wd = clampWatchdogTimeouts(effectiveConfig.watchdogTimeouts);
           });
           // Track whether the watchdog already fired abort — subsequent interval
           // ticks should force-resolve the stream if the abort didn't propagate.
-          let stallAbortedAt = 0;
-<<<<<<< HEAD
-const STALL_FORCE_RESOLVE_MS = wd.forceResolveMs; // 5s grace after abort before force-kill
+let stallAbortedAt = 0;
+		const STALL_FORCE_RESOLVE_MS = wd.forceResolveMs; // 5s grace after abort before force-kill
           if (effectiveConfig.watchdog)
             stallWatchdog = setInterval(() => {
               // If watchdog aborted but the for-await loop is stuck on a dead
