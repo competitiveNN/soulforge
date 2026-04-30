@@ -298,6 +298,7 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
   const toolMaxMin = (wd.toolMaxMs ?? 900_000) / 60_000;
   const forceResolveSec = (wd.forceResolveMs ?? 5_000) / 1000;
 
+
   // Current values for sub-pickers
   const wdFirst = `wd-first:${(wd.firstChunkMs ?? 180_000) / 1000}`;
   const wdChunk = `wd-chunk:${(wd.chunkMs ?? 120_000) / 1000}`;
@@ -320,6 +321,7 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
       label: `Watchdog: ${watchdogLabel}`,
       description: watchdogEnabled ? "disable auto-retry on stalls" : "enable auto-retry on stalls",
     },
+
     // Watchdog first chunk timeout (seconds)
     { value: "wd-first:5", label: "5s" },
     { value: "wd-first:15", label: "15s" },
@@ -481,26 +483,27 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
     },
   };
 
-  // Top-level categories picker
-  ctx.openCommandPicker({
-    title: "Timeouts & Watchdog",
-    icon: icon("clock"),
-    currentValue,
-    scopeEnabled: false,
-    options: timeoutOptions,
-    onSelect: (value) => {
-      const handler = timeoutPickers[value];
-      if (handler) {
-        handler("", ctx);
-        return;
-      }
-      if (value === "watchdog:on") {
-        ctx.saveToScope({ watchdog: true }, "global");
-        sysMsg(ctx, "Watchdog enabled (global)");
-      } else if (value === "watchdog:off") {
-        ctx.saveToScope({ watchdog: false }, "global");
-        sysMsg(ctx, "Watchdog disabled (global)");
-      }
+      } else if (value.startsWith("wd-first:")) {
+        const sec = Number(value.split(":")[1]);
+        const timeouts = { ...wd, firstChunkMs: sec * 1000 };
+        ctx.saveToScope({ watchdogTimeouts: timeouts }, "global");
+        sysMsg(ctx, `Watchdog first-chunk timeout → ${sec}s (global)`);
+      } else if (value.startsWith("wd-chunk:")) {
+        const sec = Number(value.split(":")[1]);
+        const timeouts = { ...wd, chunkMs: sec * 1000 };
+        ctx.saveToScope({ watchdogTimeouts: timeouts }, "global");
+        sysMsg(ctx, `Watchdog chunk timeout → ${sec}s (global)`);
+      } else if (value.startsWith("wd-tool:")) {
+        const min = Number(value.split(":")[1]);
+        const timeouts = { ...wd, toolMaxMs: min * 60_000 };
+        ctx.saveToScope({ watchdogTimeouts: timeouts }, "global");
+        sysMsg(ctx, `Watchdog tool-max timeout → ${min}min (global)`);
+      } else if (value.startsWith("wd-force:")) {
+        const sec = Number(value.split(":")[1]);
+        const timeouts = { ...wd, forceResolveMs: sec * 1000 };
+        ctx.saveToScope({ watchdogTimeouts: timeouts }, "global");
+        sysMsg(ctx, `Watchdog force-resolve timeout → ${sec}s (global)`);
+>>>>>>> 6b95233 (refactor: remove /watchdog command, merge into /timeouts)      }
     },
   });
 }
