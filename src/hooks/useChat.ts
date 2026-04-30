@@ -1914,12 +1914,16 @@ export function useChat({
       let fallbackModels: string[] = [];
       if (Array.isArray(raw)) {
         // Legacy format: global fallback array (migrate to new format)
-        fallbackModels = raw as unknown as string[];
+        fallbackModels = (raw as unknown as string[]).filter((m) => m && m.trim().length > 0);
       } else if (raw && typeof raw === "object") {
-        fallbackModels = (raw as Record<string, string[]>)[activeModelRef.current] ?? [];
+        fallbackModels = ((raw as Record<string, string[]>)[activeModelRef.current] ?? []).filter(
+          (m) => m && m.trim().length > 0,
+        );
       }
       let fallbackIndex = -1; // -1 = primary model, 0+ = index into fallbackModels
       const primaryModelId = activeModelRef.current; // Store for cycling back
+      let cycleCount = 0; // Track how many times we've cycled back to primary
+      const MAX_CYCLES = 3; // Cap on primary↔fallback cycles
       // Reset retry count on real user messages (not auto-retry "Continue.")
       if (input !== "Continue." || !stallRetryPendingRef.current) {
         stallRetryCountRef.current = 0;
@@ -2205,125 +2209,67 @@ export function useChat({
             tabLabel,
           });
           let result: StreamTextResult<ToolSet, never> | undefined;
-          let proxyBounced = false;
-          for (let retry = 0; retry <= MAX_TRANSIENT_RETRIES; retry++) {
-            if (abortController.signal.aborted) break;
-            try {
-              for (let degradeLevel = 0; degradeLevel <= 2; degradeLevel++) {
-                if (abortController.signal.aborted) break;
-                try {
-                  const currentAgent =
-                    degradeLevel === 0
-                      ? agent
-                      : (() => {
-                          const degraded = degradeProviderOptions(
-                            activeModelRef.current,
-                            degradeLevel,
-                          );
-                          return createForgeAgent({
-                            model,
-                            fullModelId: modelId,
-                            contextManager,
-                            forgeMode: contextManager.getForgeMode(),
-                            interactive: interactiveCallbacks,
-                            editorIntegration: effectiveConfig.editorIntegration,
-                            subagentModels,
-                            webSearchModel: effectiveWebSearchModel,
-                            onApproveWebSearch: webSearchApproval,
-                            onApproveFetchPage: fetchPageApproval,
-                            onApproveOutsideCwd: promptOutsideCwd,
-                            onApproveDestructive: promptDestructive,
-                            providerOptions: degraded.providerOptions,
-                            headers: degraded.headers,
-                            codeExecution: effectiveConfig.codeExecution,
-                            computerUse: effectiveConfig.computerUse,
-                            anthropicTextEditor: effectiveConfig.anthropicTextEditor,
-                            cwd,
-                            sessionId: sessionIdRef.current,
-                            sharedCacheRef: sharedCacheRef.current,
-                            agentFeatures: {
-                              ...effectiveConfig.agentFeatures,
-                              onDemandTools: !useToolsStore
-                                .getState()
-                                .disabledTools.has("request_tools"),
-                            },
-                            planExecution: planExecutionRef.current,
-                            drainSteering,
-                            disablePruning: !["subagents", "both"].includes(
-                              effectiveConfig.contextManagement?.pruningTarget ?? "subagents",
-                            ),
-                            disabledTools: useToolsStore.getState().disabledTools,
-                            tabId,
-                            tabLabel,
-                          });
-                        })();
-                  result = (await currentAgent.stream({
-                    messages: newCoreMessages,
-                    abortSignal: abortController.signal,
-                    options: { userMessage: input },
-                  })) as unknown as StreamTextResult<ToolSet, never>;
-                  break;
-                } catch (err: unknown) {
-                  if (!isProviderOptionsError(err) || degradeLevel === 2) throw err;
+          if (!abortController.signal.aborted) {
+            for (let degradeLevel = 0; degradeLevel <= 2; degradeLevel++) {
+              if (abortController.signal.aborted) break;
+              try {
+                const currentAgent =
+                  degradeLevel === 0
+                    ? agent
+                    : (() => {
+                        const degraded = degradeProviderOptions(
+                          activeModelRef.current,
+                          degradeLevel,
+                        );
+                        return createForgeAgent({
+                          model,
+                          fullModelId: modelId,
+                          contextManager,
+                          forgeMode: contextManager.getForgeMode(),
+                          interactive: interactiveCallbacks,
+                          editorIntegration: effectiveConfig.editorIntegration,
+                          subagentModels,
+                          webSearchModel: effectiveWebSearchModel,
+                          onApproveWebSearch: webSearchApproval,
+                          onApproveFetchPage: fetchPageApproval,
+                          onApproveOutsideCwd: promptOutsideCwd,
+                          onApproveDestructive: promptDestructive,
+                          providerOptions: degraded.providerOptions,
+                          headers: degraded.headers,
+                          codeExecution: effectiveConfig.codeExecution,
+                          computerUse: effectiveConfig.computerUse,
+                          anthropicTextEditor: effectiveConfig.anthropicTextEditor,
+                          cwd,
+                          sessionId: sessionIdRef.current,
+                          sharedCacheRef: sharedCacheRef.current,
+                          agentFeatures: {
+                            ...effectiveConfig.agentFeatures,
+                            onDemandTools: !useToolsStore
+                              .getState()
+                              .disabledTools.has("request_tools"),
+                          },
+                          planExecution: planExecutionRef.current,
+                          drainSteering,
+                          disablePruning: !["subagents", "both"].includes(
+                            effectiveConfig.contextManagement?.pruningTarget ?? "subagents",
+                          ),
+                          disabledTools: useToolsStore.getState().disabledTools,
+                          tabId,
+                          tabLabel,
+                        });
+                      })();
+                result = (await currentAgent.stream({
+                  messages: newCoreMessages,
+                  abortSignal: abortController.signal,
+                  options: { userMessage: input },
+                })) as unknown as StreamTextResult<ToolSet, never>;
+                break;
+              } catch (err: unknown) {
+                if (!isProviderOptionsError(err) || degradeLevel === 2) {
+                  // Let transient errors propagate to outer catch for retry handling
+                  throw err;
                 }
               }
-              break;
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : String(err);
-              const isTransient =
-                /overloaded|529|429|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection/i.test(
-                  msg,
-                );
-              if (
-                !isTransient ||
-                retry === MAX_TRANSIENT_RETRIES ||
-                abortController.signal.aborted
-              ) {
-                throw err;
-              }
-              // Self-heal the proxy on connection-level failures (wedged child process).
-              // At most once per submit, hard-capped by an 8s timeout so a stuck
-              // ensureProxy() can never block the retry loop.
-              const isConnErr =
-                /cannot connect|unable to connect|fetch failed|failed to fetch|socket hang up|econnreset|econnrefused|enotfound|eai_again|network error|stream (?:error|closed)|premature close|terminated|connection (?:error|reset|refused|closed)/i.test(
-                  msg,
-                );
-              if (!proxyBounced && isConnErr && getActiveProviderId() === "proxy") {
-                proxyBounced = true;
-                // Probe /v1/models first — a healthy proxy means the error is
-                // upstream (Claude subscription flake) and bouncing is pointless.
-                const healthy = await proxyHealthProbe().catch(() => false);
-                if (!healthy) {
-                  await Promise.race([
-                    bounceProxy().catch(() => false),
-                    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),
-                  ]);
-                }
-              }
-              const delay = RETRY_BASE_DELAY_MS * 2 ** retry + Math.random() * 500;
-              const delaySec = Math.round(delay / 1000);
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: crypto.randomUUID(),
-                  role: "system",
-                  content: `Retry ${String(retry + 1)}/${String(MAX_TRANSIENT_RETRIES)}: ${msg} [delay:${String(delaySec)}s]`,
-                  timestamp: Date.now(),
-                },
-              ]);
-              await new Promise<void>((resolve, reject) => {
-                const timer = setTimeout(resolve, delay);
-                const onAbort = () => {
-                  clearTimeout(timer);
-                  reject(new Error("aborted"));
-                };
-                if (abortController.signal.aborted) {
-                  clearTimeout(timer);
-                  reject(new Error("aborted"));
-                } else {
-                  abortController.signal.addEventListener("abort", onAbort, { once: true });
-                }
-              });
             }
           }
 
@@ -2448,7 +2394,7 @@ const wd = clampWatchdogTimeouts(effectiveConfig.watchdogTimeouts);
           const onUserAbort = () => {
             // Only mark as user-aborted if the abort wasn't from the stall watchdog.
             if (!stallTriggered) {
-              userAbortedRef.current = true;
+              userAborted = true;
             }
           };
           abortController.signal.addEventListener("abort", onUserAbort, { once: true });
@@ -3323,9 +3269,9 @@ let stallAbortedAt = 0;
                 // Signal that a retry is pending
                 stallRetryPendingRef.current = true;
 
-                // Continue after backoff
-                setTimeout(() => handleSubmitRef.current("Continue."), delay);
-                return;
+                // Continue after backoff (use await to avoid racing finally block)
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                continue;
               } else {
                 // No partial output - retry the stream directly
                 stallRetryPendingRef.current = true;
@@ -3339,7 +3285,10 @@ let stallAbortedAt = 0;
             if (fallbackIndex < fallbackModels.length - 1) {
               fallbackIndex++;
               const nextModel = fallbackModels[fallbackIndex];
-              if (!nextModel) continue;
+              if (!nextModel || nextModel.trim().length === 0) {
+                // Skip invalid entries and try next
+                continue;
+              }
               activeModelRef.current = nextModel;
               streamRetryCount = 0; // Reset retry count for the new model
               setMessages((prev) => [
@@ -3353,7 +3302,15 @@ let stallAbortedAt = 0;
               ]);
               continue;
             } else {
-              // All fallbacks exhausted - cycle back to primary model
+              // All fallbacks exhausted - check cycle count
+              cycleCount++;
+              if (cycleCount > MAX_CYCLES) {
+                // Escalate: stop retrying and let the error propagate
+                throw new Error(
+                  `Exhausted ${MAX_CYCLES} cycles of model fallbacks. Last error: ${msg}`,
+                );
+              }
+              // Cycle back to primary model
               fallbackIndex = -1;
               activeModelRef.current = primaryModelId;
               streamRetryCount = 0;
@@ -3362,7 +3319,7 @@ let stallAbortedAt = 0;
                 {
                   id: crypto.randomUUID(),
                   role: "system",
-                  content: `All fallbacks exhausted, retrying with primary model: ${primaryModelId}`,
+                  content: `All fallbacks exhausted, retrying with primary model: ${primaryModelId} (cycle ${cycleCount}/${MAX_CYCLES})`,
                   timestamp: Date.now(),
                 },
               ]);
