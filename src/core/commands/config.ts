@@ -292,22 +292,9 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
   const watchdogEnabled = cfg.watchdog ?? false;
   const wd = cfg.watchdogTimeouts ?? {};
 
-
-  const watchdogLabel = watchdogEnabled ? "On" : "Off";
-  const firstChunkSec = (wd.firstChunkMs ?? 180_000) / 1000;
-  const chunkSec = (wd.chunkMs ?? 120_000) / 1000;
-  const toolMaxMin = (wd.toolMaxMs ?? 900_000) / 60_000;
-  const forceResolveSec = (wd.forceResolveMs ?? 5_000) / 1000;
-
-
-  // Current values for sub-pickers
-  const wdFirst = `wd-first:${(wd.firstChunkMs ?? 180_000) / 1000}`;
-  const wdChunk = `wd-chunk:${(wd.chunkMs ?? 120_000) / 1000}`;
-  const wdTool = `wd-tool:${(wd.toolMaxMs ?? 900_000) / 60_000}`;
-  const wdForce = `wd-force:${(wd.forceResolveMs ?? 5_000) / 1000}`;
-
-  const timeoutOptions = [
+const timeoutOptions = [
     // Tool timeout
+    { value: "sep0", label: "— Tool Timeout —", disabled: true },
     { value: "tool:1", label: "1 min" },
     { value: "tool:2", label: "2 min", description: "default" },
     { value: "tool:5", label: "5 min" },
@@ -359,11 +346,11 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
 
   // Determine current values for highlighting
   const currentTool = `tool:${currentToolTimeout}`;
-   const wdFirst = `wd-first:${(wd.firstChunkMs ?? 180_000) / 1000}`;
-   const wdChunk = `wd-chunk:${(wd.chunkMs ?? 120_000) / 1000}`;
-   const wdTool = `wd-tool:${(wd.toolMaxMs ?? 900_000) / 60_000}`;
-   const wdForce = `wd-force:${(wd.forceResolveMs ?? 5_000) / 1000}`;
-   const currentValue = [currentTool, wdFirst, wdChunk, wdTool, wdForce];
+const wdFirst = `wd-first:${(wd.firstChunkMs ?? 180_000) / 1000}`;
+  const wdChunk = `wd-chunk:${(wd.chunkMs ?? 120_000) / 1000}`;
+  const wdTool = `wd-tool:${(wd.toolMaxMs ?? 900_000) / 60_000}`;
+  const wdForce = `wd-force:${(wd.forceResolveMs ?? 5_000) / 1000}`;
+  const currentValue = [currentTool, wdFirst, wdChunk, wdTool, wdForce];
 
   // Sub-picker lookup
   const timeoutPickers: Record<string, CommandHandler> = {
@@ -1100,10 +1087,10 @@ export function matchConfigPrefix(cmd: string): CommandHandler | null {
   if (cmd === "/theme" || cmd.startsWith("/theme ")) return handleTheme;
   return null;
    // Determine current values for highlighting
-   const currentTool = `tool:${currentToolTimeout}`;
-   const wdFirst = `wd-first:${(wd.firstChunkMs ?? 180_000) / 1000}`;
-   const wdChunk = `wd-chunk:${(wd.chunkMs ?? 120_000) / 1000}`;
-   const wdTool = `wd-tool:${(wd.toolMaxMs ?? 900_000) / 60_000}`;
-   const wdForce = `wd-force:${(wd.forceResolveMs ?? 5_000) / 1000}`;
-   const currentValue = [currentTool, wdFirst, wdChunk, wdTool, wdForce];
+const currentTool = `tool:${currentToolTimeout}`;
+  const wdFirst = `wd-first:${(wd.firstChunkMs ?? 180_000) / 1000}`;
+  const wdChunk = `wd-chunk:${(wd.chunkMs ?? 120_000) / 1000}`;
+  const wdTool = `wd-tool:${(wd.toolMaxMs ?? 900_000) / 60_000}`;
+  const wdForce = `wd-force:${(wd.forceResolveMs ?? 5_000) / 1000}`;
+  const currentValue = [currentTool, wdFirst, wdChunk, wdTool, wdForce];
 }
