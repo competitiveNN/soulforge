@@ -1583,8 +1583,9 @@ export function App({
             fallbacks.push(modelId);
             current[fallbackForModel] = fallbacks;
             saveToScope({ modelFallback: current }, modelScope);
-            // closeLlmSelector will handle the close + reopen flow
-            closeLlmSelector();
+            useUIStore.getState().setFallbackForModel(null);
+            useUIStore.getState().closeModal("llmSelector");
+            useUIStore.getState().openModal("routerSettings");
             return;
           }
 
@@ -1592,15 +1593,20 @@ export function App({
             const current = effectiveConfig.taskRouter ?? DEFAULT_TASK_ROUTER;
             const updated = { ...current, [slot]: modelId };
             saveToScope({ taskRouter: updated }, routerScope);
-            // closeLlmSelector will handle the close + reopen flow
-            closeLlmSelector();
+            useUIStore.getState().setRouterSlotPicking(null);
+            useUIStore.getState().closeModal("llmSelector");
+            useUIStore.getState().openModal("routerSettings");
           } else {
             activeChatRef.current?.setActiveModel(modelId);
             notifyProviderSwitch(modelId);
             setActiveModelForHeader(modelId);
             saveToScope({ defaultModel: modelId }, modelScope);
-            // closeLlmSelector will handle the close + reopen flow
-            closeLlmSelector();
+            const wasFromWizard = wizardOpenedLlm.current;
+            wizardOpenedLlm.current = false;
+            useUIStore.getState().closeModal("llmSelector");
+            if (wasFromWizard) {
+              useUIStore.getState().openModal("firstRunWizard");
+            }
           }
         }}
         onClose={closeLlmSelector}

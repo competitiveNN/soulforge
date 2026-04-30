@@ -418,7 +418,6 @@ export function useChat({
   // tap Allow/Deny, which is not stream inactivity.
   const remoteApprovalActiveRef = useRef(0);
   const webSearchModelLabelRef = useRef<string | null>(null);
-  const userAbortedRef = useRef(false);
   const [activePlan, setActivePlanRaw] = useState<Plan | null>(initialState?.activePlan ?? null);
   const activePlanRef = useRef<Plan | null>(activePlan);
   const setActivePlan = useCallback<typeof setActivePlanRaw>((v) => {
@@ -471,13 +470,10 @@ export function useChat({
     return next;
   }, [setForgeMode]);
 
-  // Sync forgeMode to contextManager on mount (covers session resume) and on
-  // every change. Each tab has its own contextManager (TabInstance.tsx), so
-  // syncing for inactive tabs is safe — the agent only reads forgeMode at
-  // turn start, which only happens when the tab is active anyway.
+  // Sync forgeMode to contextManager when tab becomes visible (tab switch)
   useEffect(() => {
-    contextManager.setForgeMode(forgeMode);
-  }, [forgeMode, contextManager]);
+    if (visible) contextManager.setForgeMode(forgeMode);
+  }, [visible, forgeMode, contextManager]);
 
   // Sync co-author flag with git module + shell interceptor
   useEffect(() => {
@@ -1761,15 +1757,6 @@ export function useChat({
 
       const unsubAgentStats = onAgentStats((event) => {
         if (!isOurDispatch(event.parentToolCallId)) return;
-        useStatusBarStore.getState().upsertDispatchAgent(event.parentToolCallId, {
-          agentId: event.agentId,
-          modelId: event.modelId,
-          toolUses: event.toolUses,
-          input: event.tokenUsage.input,
-          output: event.tokenUsage.output,
-          cacheRead: event.cacheHits ?? 0,
-          cacheWrite: event.cacheWrite ?? 0,
-        });
         const prev = subagentCumulative.get(event.agentId) ?? {
           input: 0,
           output: 0,
@@ -1821,44 +1808,14 @@ export function useChat({
 
       const unsubMultiAgent = onMultiAgentEvent((event) => {
         if (!isOurDispatch(event.parentToolCallId)) return;
-        // ── Per-agent snapshot for /context Dispatch tab ──
-        if (event.type === "dispatch-start") {
-          useStatusBarStore
-            .getState()
-            .startDispatch(event.parentToolCallId, event.totalAgents ?? 0);
-        }
+        // ── SubagentStart / SubagentStop hooks ──
         if (event.type === "agent-start" && event.agentId) {
-          useStatusBarStore.getState().upsertDispatchAgent(event.parentToolCallId, {
-            agentId: event.agentId,
-            role: event.role,
-            modelId: event.modelId,
-            tier: event.tier,
-            task: event.task,
-            state: "running",
-          });
-          // ── SubagentStart hook ──
           runHooks({
             event: "SubagentStart",
             toolInput: { agent_id: event.agentId, agent_type: event.role },
             sessionId: sessionIdRef.current,
             cwd,
           }).catch(() => {});
-        }
-        if ((event.type === "agent-done" || event.type === "agent-error") && event.agentId) {
-          useStatusBarStore.getState().upsertDispatchAgent(event.parentToolCallId, {
-            agentId: event.agentId,
-            role: event.role,
-            modelId: event.modelId,
-            tier: event.tier,
-            task: event.task,
-            toolUses: event.toolUses,
-            ...(event.tokenUsage
-              ? { input: event.tokenUsage.input, output: event.tokenUsage.output }
-              : {}),
-            ...(event.cacheHits != null ? { cacheRead: event.cacheHits } : {}),
-            succeeded: event.succeeded,
-            state: event.type === "agent-error" ? "error" : "done",
-          });
         }
         if (event.type === "agent-done" && event.agentId) {
           runHooks({
@@ -1873,7 +1830,6 @@ export function useChat({
           queueMicrotaskFlush();
         }
         if (event.type === "dispatch-done") {
-          useStatusBarStore.getState().finishDispatch(event.parentToolCallId);
           completedResultChars.clear();
           subagentCumulative.clear();
           if (visibleRef.current) useStatusBarStore.getState().setSubagentChars(0);
@@ -1901,38 +1857,37 @@ export function useChat({
       let unsubStallWatch1: (() => void) | null = null;
       let unsubStallWatch2: (() => void) | null = null;
       let unsubStallWatch3: (() => void) | null = null;
+      let userAborted = false;
       let stallTriggered = false; // only true when the watchdog itself fires
+      let stallAborted = false; // true when abort is from stall watchdog
       // Resolve retry settings once at handleSubmit scope so they're accessible
       // in both the retry loop AND the outer catch block for streaming errors.
       const { maxRetries: MAX_TRANSIENT_RETRIES, baseDelayMs: RETRY_BASE_DELAY_MS } =
         resolveRetrySettings(effectiveConfig.retry);
       let streamRetryCount = 0; // local retry counter (not a ref)
       // Model fallback: per-model fallback chains
-      // Format: Record<modelId, fallbackArray>
+      // Look up fallbacks for the CURRENT model from the Record<modelId, fallbackArray>
+      // Also support legacy format (string[]) for backward compatibility
       const raw = effectiveConfig.modelFallback;
       let fallbackModels: string[] = [];
-      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-        fallbackModels = ((raw as Record<string, string[]>)[activeModelRef.current] ?? []).filter(
-          (m) => m && m.trim().length > 0,
-        );
+      if (Array.isArray(raw)) {
+        // Legacy format: global fallback array (migrate to new format)
+        fallbackModels = raw as unknown as string[];
+      } else if (raw && typeof raw === "object") {
+        fallbackModels = (raw as Record<string, string[]>)[activeModelRef.current] ?? [];
       }
-      // Legacy string[] format is no longer supported - use Record format
       let fallbackIndex = -1; // -1 = primary model, 0+ = index into fallbackModels
       const primaryModelId = activeModelRef.current; // Store for cycling back
-      let cycleCount = 0; // Track how many times we've cycled back to primary
-      const MAX_CYCLES = 3; // Cap on primary↔fallback cycles
       // Reset retry count on real user messages (not auto-retry "Continue.")
       if (input !== "Continue." || !stallRetryPendingRef.current) {
         stallRetryCountRef.current = 0;
       }
+      stallRetryPendingRef.current = false;
 
       const responseStartedAt = Date.now();
 
       for (;;) {
         // Reset state for retry
-        userAbortedRef.current = false;
-        stallTriggered = false;
-        stallRetryPendingRef.current = false;
         abortController = new AbortController();
         abortRef.current = abortController;
         fullText = "";
@@ -1940,7 +1895,6 @@ export function useChat({
         finalSegments.length = 0;
         subagentCumulative.clear();
         completedResultChars.clear();
-        let proxyBounced = false;
 
         try {
           setIsLoading(true);
@@ -2208,69 +2162,125 @@ export function useChat({
             tabLabel,
           });
           let result: StreamTextResult<ToolSet, never> | undefined;
-          if (!abortController.signal.aborted) {
-            // Extracted for smaller diffs when modifying streaming logic
-            const runStreamAttempt = async (degradeLevel: number) => {
-              const currentAgent =
-                degradeLevel === 0
-                  ? agent
-                  : (() => {
-                      const degraded = degradeProviderOptions(activeModelRef.current, degradeLevel);
-                      return createForgeAgent({
-                        model,
-                        fullModelId: modelId,
-                        contextManager,
-                        forgeMode: contextManager.getForgeMode(),
-                        interactive: interactiveCallbacks,
-                        editorIntegration: effectiveConfig.editorIntegration,
-                        subagentModels,
-                        webSearchModel: effectiveWebSearchModel,
-                        onApproveWebSearch: webSearchApproval,
-                        onApproveFetchPage: fetchPageApproval,
-                        onApproveOutsideCwd: promptOutsideCwd,
-                        onApproveDestructive: promptDestructive,
-                        providerOptions: degraded.providerOptions,
-                        headers: degraded.headers,
-                        codeExecution: effectiveConfig.codeExecution,
-                        computerUse: effectiveConfig.computerUse,
-                        anthropicTextEditor: effectiveConfig.anthropicTextEditor,
-                        cwd,
-                        sessionId: sessionIdRef.current,
-                        sharedCacheRef: sharedCacheRef.current,
-                        agentFeatures: {
-                          ...effectiveConfig.agentFeatures,
-                          onDemandTools: !useToolsStore
-                            .getState()
-                            .disabledTools.has("request_tools"),
-                        },
-                        planExecution: planExecutionRef.current,
-                        drainSteering,
-                        disablePruning: !["subagents", "both"].includes(
-                          effectiveConfig.contextManagement?.pruningTarget ?? "subagents",
-                        ),
-                        disabledTools: useToolsStore.getState().disabledTools,
-                        tabId,
-                        tabLabel,
-                      });
-                    })();
-              return (await currentAgent.stream({
-                messages: newCoreMessages,
-                abortSignal: abortController.signal,
-                options: { userMessage: input },
-              })) as unknown as StreamTextResult<ToolSet, never>;
-            };
-
-            for (let degradeLevel = 0; degradeLevel <= 2; degradeLevel++) {
-              if (abortController.signal.aborted) break;
-              try {
-                result = await runStreamAttempt(degradeLevel);
-                break;
-              } catch (err: unknown) {
-                if (!isProviderOptionsError(err) || degradeLevel === 2) {
-                  // Let transient errors propagate to outer catch for retry handling
-                  throw err;
+          let proxyBounced = false;
+          for (let retry = 0; retry <= MAX_TRANSIENT_RETRIES; retry++) {
+            if (abortController.signal.aborted) break;
+            try {
+              for (let degradeLevel = 0; degradeLevel <= 2; degradeLevel++) {
+                if (abortController.signal.aborted) break;
+                try {
+                  const currentAgent =
+                    degradeLevel === 0
+                      ? agent
+                      : (() => {
+                          const degraded = degradeProviderOptions(
+                            activeModelRef.current,
+                            degradeLevel,
+                          );
+                          return createForgeAgent({
+                            model,
+                            fullModelId: modelId,
+                            contextManager,
+                            forgeMode: contextManager.getForgeMode(),
+                            interactive: interactiveCallbacks,
+                            editorIntegration: effectiveConfig.editorIntegration,
+                            subagentModels,
+                            webSearchModel: effectiveWebSearchModel,
+                            onApproveWebSearch: webSearchApproval,
+                            onApproveFetchPage: fetchPageApproval,
+                            onApproveOutsideCwd: promptOutsideCwd,
+                            onApproveDestructive: promptDestructive,
+                            providerOptions: degraded.providerOptions,
+                            headers: degraded.headers,
+                            codeExecution: effectiveConfig.codeExecution,
+                            computerUse: effectiveConfig.computerUse,
+                            anthropicTextEditor: effectiveConfig.anthropicTextEditor,
+                            cwd,
+                            sessionId: sessionIdRef.current,
+                            sharedCacheRef: sharedCacheRef.current,
+                            agentFeatures: {
+                              ...effectiveConfig.agentFeatures,
+                              onDemandTools: !useToolsStore
+                                .getState()
+                                .disabledTools.has("request_tools"),
+                            },
+                            planExecution: planExecutionRef.current,
+                            drainSteering,
+                            disablePruning: !["subagents", "both"].includes(
+                              effectiveConfig.contextManagement?.pruningTarget ?? "subagents",
+                            ),
+                            disabledTools: useToolsStore.getState().disabledTools,
+                            tabId,
+                            tabLabel,
+                          });
+                        })();
+                  result = (await currentAgent.stream({
+                    messages: newCoreMessages,
+                    abortSignal: abortController.signal,
+                    options: { userMessage: input },
+                  })) as unknown as StreamTextResult<ToolSet, never>;
+                  break;
+                } catch (err: unknown) {
+                  if (!isProviderOptionsError(err) || degradeLevel === 2) throw err;
                 }
               }
+              break;
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              const isTransient =
+                /overloaded|529|429|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection/i.test(
+                  msg,
+                );
+              if (
+                !isTransient ||
+                retry === MAX_TRANSIENT_RETRIES ||
+                abortController.signal.aborted
+              ) {
+                throw err;
+              }
+              // Self-heal the proxy on connection-level failures (wedged child process).
+              // At most once per submit, hard-capped by an 8s timeout so a stuck
+              // ensureProxy() can never block the retry loop.
+              const isConnErr =
+                /cannot connect|unable to connect|fetch failed|failed to fetch|socket hang up|econnreset|econnrefused|enotfound|eai_again|network error|stream (?:error|closed)|premature close|terminated|connection (?:error|reset|refused|closed)/i.test(
+                  msg,
+                );
+              if (!proxyBounced && isConnErr && getActiveProviderId() === "proxy") {
+                proxyBounced = true;
+                // Probe /v1/models first — a healthy proxy means the error is
+                // upstream (Claude subscription flake) and bouncing is pointless.
+                const healthy = await proxyHealthProbe().catch(() => false);
+                if (!healthy) {
+                  await Promise.race([
+                    bounceProxy().catch(() => false),
+                    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),
+                  ]);
+                }
+              }
+              const delay = RETRY_BASE_DELAY_MS * 2 ** retry + Math.random() * 500;
+              const delaySec = Math.round(delay / 1000);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: "system",
+                  content: `Retry ${String(retry + 1)}/${String(MAX_TRANSIENT_RETRIES)}: ${msg} [delay:${String(delaySec)}s]`,
+                  timestamp: Date.now(),
+                },
+              ]);
+              await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(resolve, delay);
+                const onAbort = () => {
+                  clearTimeout(timer);
+                  reject(new Error("aborted"));
+                };
+                if (abortController.signal.aborted) {
+                  clearTimeout(timer);
+                  reject(new Error("aborted"));
+                } else {
+                  abortController.signal.addEventListener("abort", onAbort, { once: true });
+                }
+              });
             }
           }
 
@@ -2372,9 +2382,9 @@ export function useChat({
           // First-content is generous for free tiers, deep reasoning, and large contexts.
           // Paused entirely while tools execute (they have their own timeouts).
 const wd = clampWatchdogTimeouts(effectiveConfig.watchdogTimeouts);
-           const STALL_CHUNK_MS = wd.chunkMs;
-           const STALL_FIRST_CHUNK_MS = wd.firstChunkMs;
-           const STALL_TOOL_MAX_MS = wd.toolMaxMs; // 15min — dispatch worst case
+            const STALL_CHUNK_MS = wd.chunkMs;
+            const STALL_FIRST_CHUNK_MS = wd.firstChunkMs;
+            const STALL_TOOL_MAX_MS = wd.toolMaxMs; // 15min — dispatch worst case
           let lastActivityTs = Date.now();
           let lastToolActivityTs = Date.now();
           let toolsInFlight = 0;
@@ -2394,8 +2404,8 @@ const wd = clampWatchdogTimeouts(effectiveConfig.watchdogTimeouts);
           };
           const onUserAbort = () => {
             // Only mark as user-aborted if the abort wasn't from the stall watchdog.
-            if (!stallTriggered) {
-              userAbortedRef.current = true;
+            if (!stallAborted) {
+              userAborted = true;
             }
           };
           abortController.signal.addEventListener("abort", onUserAbort, { once: true });
@@ -2427,7 +2437,7 @@ let stallAbortedAt = 0;
             stallWatchdog = setInterval(() => {
               // If watchdog aborted but the for-await loop is stuck on a dead
               // connection that didn't honor the AbortSignal, force-resolve it.
-              if (stallTriggered && Date.now() - stallAbortedAt >= STALL_FORCE_RESOLVE_MS) {
+              if (stallAborted && Date.now() - stallAbortedAt >= STALL_FORCE_RESOLVE_MS) {
                 // Force the stream iterator to end by calling return() on the SAME
                 // iterator the for-await loop holds. A new [Symbol.asyncIterator]()
                 // call would create a fresh reader and fail on the locked stream.
@@ -2506,7 +2516,7 @@ let stallAbortedAt = 0;
                   `Stream stalled ${String(STALL_MAX_RETRIES)} times — giving up`,
                 );
               }
-              stallTriggered = true; // Mark that abort is from watchdog
+              stallAborted = true; // Mark that abort is from watchdog
               stallAbortedAt = Date.now(); // Keep for force-resolve timing
               abortController.abort();
             }, 10_000);
@@ -2984,7 +2994,7 @@ let stallAbortedAt = 0;
           // If the watchdog fired but the stream ended gracefully (some providers
           // close the stream instead of throwing on abort), re-throw so the catch
           // block's auto-retry logic kicks in.
-          if (stallTriggered && abortController.signal.aborted && !userAbortedRef.current) {
+          if (stallTriggered && abortController.signal.aborted && !userAborted) {
             throw new Error("Stream stall — abort did not throw");
           }
 
@@ -3157,15 +3167,14 @@ let stallAbortedAt = 0;
           }
           const isAbort = abortController.signal.aborted;
           const msg = err instanceof Error ? err.message : String(err);
-          const chain = causeChain(err);
           const isTransient =
-            /overloaded|529|429|403|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection|enginecore/i.test(
-              chain,
+            /overloaded|529|429|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection/i.test(
+              msg,
             );
           const isStallRetry =
             isAbort &&
             stallTriggered &&
-            !userAbortedRef.current &&
+            !userAborted &&
             stallRetryCountRef.current <= STALL_MAX_RETRIES;
 
           // Retry on transient errors during streaming (e.g. "socket connection closed unexpectedly")
@@ -3173,27 +3182,6 @@ let stallAbortedAt = 0;
             streamRetryCount++;
             if (streamRetryCount <= MAX_TRANSIENT_RETRIES && !abortController.signal.aborted) {
               const delay = RETRY_BASE_DELAY_MS * 2 ** (streamRetryCount - 1) + Math.random() * 500;
-
-              // Self-heal the proxy on connection-level failures (wedged child process).
-              // At most once per submit, hard-capped by an 8s timeout so a stuck
-              // ensureProxy() can never block the retry loop.
-              const isConnErr =
-                /cannot connect|unable to connect|fetch failed|failed to fetch|socket hang up|econnreset|econnrefused|enotfound|eai_again|network error|stream (?:error|closed)|premature close|terminated|connection (?:error|reset|refused|closed)|enginecore/i.test(
-                  msg,
-                );
-              if (!proxyBounced && isConnErr && getActiveProviderId() === "proxy") {
-                proxyBounced = true;
-                // Probe /v1/models first — a healthy proxy means the error is
-                // upstream (Claude subscription flake) and bouncing is pointless.
-                const healthy = await proxyHealthProbe().catch(() => false);
-                if (!healthy) {
-                  await Promise.race([
-                    bounceProxy().catch(() => false),
-                    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),
-                  ]);
-                }
-              }
-
               setMessages((prev) => [
                 ...prev,
                 {
@@ -3270,9 +3258,9 @@ let stallAbortedAt = 0;
                 // Signal that a retry is pending
                 stallRetryPendingRef.current = true;
 
-                // Continue after backoff (use await to avoid racing finally block)
-                await new Promise((resolve) => setTimeout(resolve, delay));
-                continue;
+                // Continue after backoff
+                setTimeout(() => handleSubmitRef.current("Continue."), delay);
+                return;
               } else {
                 // No partial output - retry the stream directly
                 stallRetryPendingRef.current = true;
@@ -3283,15 +3271,10 @@ let stallAbortedAt = 0;
               }
             }
             // Exhausted retries for current model - try fallback models
-            // But always respect user abort (Ctrl-X) - break out of loop
-            if (userAbortedRef.current) break;
             if (fallbackIndex < fallbackModels.length - 1) {
               fallbackIndex++;
               const nextModel = fallbackModels[fallbackIndex];
-              if (!nextModel || nextModel.trim().length === 0) {
-                // Skip invalid entries and try next
-                continue;
-              }
+              if (!nextModel) continue;
               activeModelRef.current = nextModel;
               streamRetryCount = 0; // Reset retry count for the new model
               setMessages((prev) => [
@@ -3305,22 +3288,7 @@ let stallAbortedAt = 0;
               ]);
               continue;
             } else {
-              // All fallbacks exhausted - check cycle count
-              cycleCount++;
-              if (cycleCount > MAX_CYCLES) {
-                // All fallbacks and primary model exhausted — give up gracefully
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: crypto.randomUUID(),
-                    role: "system",
-                    content: `All models exhausted after ${MAX_CYCLES} cycles. Last error: ${msg}`,
-                    timestamp: Date.now(),
-                  },
-                ]);
-                break;
-              }
-              // Cycle back to primary model
+              // All fallbacks exhausted - cycle back to primary model
               fallbackIndex = -1;
               activeModelRef.current = primaryModelId;
               streamRetryCount = 0;
@@ -3329,7 +3297,7 @@ let stallAbortedAt = 0;
                 {
                   id: crypto.randomUUID(),
                   role: "system",
-                  content: `All fallbacks exhausted, retrying with primary model: ${primaryModelId} (cycle ${cycleCount}/${MAX_CYCLES})`,
+                  content: `All fallbacks exhausted, retrying with primary model: ${primaryModelId}`,
                   timestamp: Date.now(),
                 },
               ]);
@@ -3415,20 +3383,17 @@ let stallAbortedAt = 0;
             // 1. finally block doesn't fire competing handleSubmit (messageQueue/compact)
             // 2. next handleSubmit("Continue.") preserves the retry count
             stallRetryPendingRef.current = true;
-            // Backoff: 2s first, 5s second (use await to avoid racing finally block)
+            // Backoff: 2s first, 5s second
             const backoffMs = stallRetryCountRef.current === 1 ? 2_000 : 5_000;
-            await new Promise((resolve) => setTimeout(resolve, backoffMs));
-            // If user aborted during backoff, don't retry
-            if (userAbortedRef.current) break;
-            continue;
+            setTimeout(() => handleSubmitRef.current("Continue."), backoffMs);
+            // Skip the rest of the catch — finally block will clean up
+            return;
           }
 
           const rawMsg = err instanceof Error ? err.message : String(err);
-          const rawStack = err instanceof Error ? err.stack : undefined;
-          // Log non-abort errors to /errors for debugging — include stack trace
+          // Log non-abort errors to /errors for debugging
           if (!isAbort) {
-            const fullError = rawStack ? `${rawMsg}\n\n${rawStack}` : rawMsg;
-            logBackgroundError("agent-error", fullError);
+            logBackgroundError("agent-error", rawMsg);
           }
           // ── StopFailure hook ──
           if (!isAbort) {
@@ -3440,7 +3405,7 @@ let stallAbortedAt = 0;
             }).catch(() => {});
           }
           const isTransientStream =
-            /overloaded|529|429|403|rate.?limit|too many requests|503|502/i.test(rawMsg);
+            /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(rawMsg);
           const errObj =
             err != null && typeof err === "object" ? (err as Record<string, unknown>) : null;
           const apiBody =
@@ -3589,9 +3554,6 @@ let stallAbortedAt = 0;
           setStreamSegments([]);
           setLiveToolCalls([]);
           resetInProgressTasks(tabId);
-          // Non-transient errors and explicit aborts should exit the retry loop
-          // (Transient retries use `continue` above; stall retries also `continue`)
-          break;
         } finally {
           if (stallWatchdog) clearInterval(stallWatchdog);
           unsubStallWatch1?.();
@@ -3797,9 +3759,6 @@ let stallAbortedAt = 0;
       ]);
       // Don't return — also kill any concurrent generation below
     }
-    // Set userAborted immediately so Ctrl-X is always recognized,
-    // even if onUserAbort handler isn't registered yet
-    userAbortedRef.current = true;
     if (abortRef.current) {
       const pq = pendingQuestionRef.current;
       if (pq) {
@@ -3822,8 +3781,6 @@ let stallAbortedAt = 0;
       // Snapshot buffers before clearing so the catch block can reconstruct partial content
       abortedSegmentsSnapshot.current = [...streamSegmentsBuffer.current];
       abortedToolCallsSnapshot.current = [...liveToolCallsBuffer.current];
-      // Set userAborted immediately so Ctrl-X is always recognized
-      userAbortedRef.current = true;
       abortRef.current.abort();
       abortRef.current = null;
       setIsLoading(false);
@@ -3949,15 +3906,4 @@ let stallAbortedAt = 0;
     setForgeMode,
     cycleMode: cycleModeFn,
   };
-}
-function causeChain(err: unknown): string {
-  const parts: string[] = [];
-  let cur: unknown = err;
-  const seen = new Set<unknown>();
-  while (cur && !seen.has(cur)) {
-    seen.add(cur);
-    parts.push(cur instanceof Error ? `${cur.name}: ${cur.message}` : String(cur));
-    cur = (cur as { cause?: unknown })?.cause;
-  }
-  return parts.join("\n  caused by: ");
 }

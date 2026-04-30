@@ -5,7 +5,6 @@ import type { TaskRouter } from "../../types/index.js";
 import type { ConfigScope } from "../layout/shared.js";
 import { CONFIG_SCOPES } from "../layout/shared.js";
 import {
-  Hint,
   handleCursorNavKey,
   PremiumPopup,
   Section,
@@ -44,7 +43,6 @@ type Def = SlotDef | PickerDef;
 interface SectionDef {
   id: string;
   title: string;
-  subtitle?: string;
   defs: Def[];
 }
 
@@ -272,7 +270,7 @@ export function RouterSettings({
     ? (selectedRow as Row & { kind: "fallback" }).modelId
     : null;
 
-  // --- Render helpers ---
+// --- Render helpers ---
 
   const groups = useMemo<{ id: string; label: string; accent?: string; meta?: string; items: SlotRow[] }[]>(
     () =>
@@ -350,6 +348,7 @@ export function RouterSettings({
     }
     if (evt.name === "return") {
       if (selectedIsFallbackRow && selectedFallbackModelId) {
+        // Open model picker to add a fallback for this model
         onAddFallback(selectedFallbackModelId);
       } else if (selectedSlot) {
         onPickSlot(selectedSlot.key);
@@ -540,8 +539,6 @@ export function RouterSettings({
               labelWidth={14}
               options={def.options.map((o) => ({ value: o, label: String(o) }))}
               value={num}
-              focused={isSelected}
-              onChange={isSelected ? (value: number) => onPickerChange(def.key, value) : undefined}
             />
           );
         })}
