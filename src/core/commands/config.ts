@@ -292,16 +292,16 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
   const watchdogEnabled = cfg.watchdog ?? false;
   const wd = cfg.watchdogTimeouts ?? {};
 
-  const currentTool = `tool:${currentToolTimeout}`;
-  const wdFirstSec = (wd.firstChunkMs ?? 180_000) / 1000;
-  const wdChunkSec = (wd.chunkMs ?? 120_000) / 1000;
-  const wdToolSec = (wd.toolMaxMs ?? 900_000) / 1000;
-  const wdForceSec = (wd.forceResolveMs ?? 5_000) / 1000;
+const currentTool = `tool:${currentToolTimeout}`;
+   const wdFirstSec = (wd.firstChunkMs ?? 180_000) / 1000;
+   const wdChunkSec = (wd.chunkMs ?? 120_000) / 1000;
+   const wdToolSec = (wd.toolMaxMs ?? 900_000) / 1000;
+   const wdForceSec = (wd.forceResolveMs ?? 5_000) / 1000;
 
-  const wdFirst = `wd-first:${wdFirstSec}`;
-  const wdChunk = `wd-chunk:${wdChunkSec}`;
-  const wdTool = `wd-tool:${wdToolSec}`;
-  const wdForce = `wd-force:${wdForceSec}`;
+   const wdFirst = `wd-first:${wdFirstSec}`;
+   const wdChunk = `wd-chunk:${wdChunkSec}`;
+   const wdTool = `wd-tool:${wdToolSec}`;
+   const wdForce = `wd-force:${wdForceSec}`;
 
   // Lookup table: category → picker config
   const timeoutPickers: Record<string, CommandHandler> = {
@@ -453,10 +453,9 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
       { value: "wd-tool", label: "Tool Max Timeout", description: `${wdToolSec}s` },
       { value: "wd-force", label: "Force-Resolve Timeout", description: `${wdForceSec}s` },
     ],
-    onSelect: (value) => {
-      const handler = timeoutPickers[value];
-      if (handler) {
-        handler("", ctx);
+onSelect: (value) => {
+       const handler = timeoutPickers[value];
+       if (handler) {
       }
     },
   });
