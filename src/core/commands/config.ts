@@ -352,14 +352,16 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
     { value: "wd-force:1", label: "1s" },
     { value: "wd-force:5", label: "5s", description: "default" },
     { value: "wd-force:10", label: "10s" },
-    { value: "wd-force:30", label: "30s" },
+{ value: "wd-force:30", label: "30s" },
   ];
 
   // Determine current values for highlighting
-  const currentValue = [
-    `tool:${currentToolTimeout}`,
-    watchdogEnabled ? "watchdog:on" : "watchdog:off",
-  ];
+  const currentTool = `tool:${currentToolTimeout}`;
+   const wdFirst = `wd-first:${(wd.firstChunkMs ?? 180_000) / 1000}`;
+   const wdChunk = `wd-chunk:${(wd.chunkMs ?? 120_000) / 1000}`;
+   const wdTool = `wd-tool:${(wd.toolMaxMs ?? 900_000) / 60_000}`;
+   const wdForce = `wd-force:${(wd.forceResolveMs ?? 5_000) / 1000}`;
+   const currentValue = [currentTool, wdFirst, wdChunk, wdTool, wdForce];
 
   // Sub-picker lookup
   const timeoutPickers: Record<string, CommandHandler> = {
@@ -1095,4 +1097,11 @@ export function matchConfigPrefix(cmd: string): CommandHandler | null {
   if (cmd === "/nvim-config" || cmd.startsWith("/nvim-config ")) return handleNvimConfig;
   if (cmd === "/theme" || cmd.startsWith("/theme ")) return handleTheme;
   return null;
+   // Determine current values for highlighting
+   const currentTool = `tool:${currentToolTimeout}`;
+   const wdFirst = `wd-first:${(wd.firstChunkMs ?? 180_000) / 1000}`;
+   const wdChunk = `wd-chunk:${(wd.chunkMs ?? 120_000) / 1000}`;
+   const wdTool = `wd-tool:${(wd.toolMaxMs ?? 900_000) / 60_000}`;
+   const wdForce = `wd-force:${(wd.forceResolveMs ?? 5_000) / 1000}`;
+   const currentValue = [currentTool, wdFirst, wdChunk, wdTool, wdForce];
 }
