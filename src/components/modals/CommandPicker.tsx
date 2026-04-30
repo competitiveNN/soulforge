@@ -269,16 +269,10 @@ export function CommandPicker({ visible, config, onClose }: Props) {
         for (const sel of config.selectors) initial[sel.key] = sel.value;
         setSelectorState(initial);
       }
-      const curVal = config.currentValue;
-      let idx = curVal
-        ? Array.isArray(curVal)
-          ? filteredOptions.findIndex((o) => curVal.includes(o.value))
-          : filteredOptions.findIndex((o) => o.value === curVal)
-        : -1;
-      if (idx < 0) {
-        idx = filteredOptions.findIndex((o) => !o.disabled && o.kind !== "separator");
-      }
-      const startIdx = idx >= 0 ? idx : 0;
+if (idx < 0) {
+         idx = filteredOptions.findIndex((o) => !o.disabled && o.kind !== "separator");
+       }
+       const startIdx = idx >= 0 ? idx : 0;
       setCursor(startIdx);
       setScrollOffset(Math.max(0, startIdx - Math.floor(maxVisible / 2)));
       if (config.scopeEnabled) setScope(config.initialScope ?? "project");
@@ -606,13 +600,13 @@ export function CommandPicker({ visible, config, onClose }: Props) {
                 key={option.value}
                 option={option}
                 isActive={vi + clampedOffset === cursor}
-                isCurrent={
-                  config.currentValue
-                    ? Array.isArray(config.currentValue)
-                      ? config.currentValue.includes(option.value)
-                      : option.value === config.currentValue
-                    : false
-                }
+isCurrent={
+                   config.currentValue
+                     ? Array.isArray(config.currentValue)
+                       ? config.currentValue.includes(option.value)
+                       : option.value === config.currentValue
+                     : false
+                 }
                 innerW={innerW}
                 popupBg={POPUP_BG}
                 popupHl={POPUP_HL}
