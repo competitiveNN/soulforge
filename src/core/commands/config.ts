@@ -292,6 +292,7 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
   const watchdogEnabled = cfg.watchdog ?? false;
   const wd = cfg.watchdogTimeouts ?? {};
 
+
   const watchdogLabel = watchdogEnabled ? "On" : "Off";
   const firstChunkSec = (wd.firstChunkMs ?? 180_000) / 1000;
   const chunkSec = (wd.chunkMs ?? 120_000) / 1000;
@@ -318,9 +319,10 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
     { value: "sep_watchdog", label: "─ Watchdog ─", disabled: true },
     {
       value: watchdogEnabled ? "watchdog:off" : "watchdog:on",
-      label: `Watchdog: ${watchdogLabel}`,
+      label: `Watchdog: ${watchdogEnabled ? "On" : "Off"}`,
       description: watchdogEnabled ? "disable auto-retry on stalls" : "enable auto-retry on stalls",
     },
+
 
     // Watchdog first chunk timeout (seconds)
     { value: "wd-first:5", label: "5s" },
@@ -494,16 +496,16 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
         ctx.saveToScope({ watchdogTimeouts: timeouts }, "global");
         sysMsg(ctx, `Watchdog chunk timeout → ${sec}s (global)`);
       } else if (value.startsWith("wd-tool:")) {
-        const min = Number(value.split(":")[1]);
-        const timeouts = { ...wd, toolMaxMs: min * 60_000 };
+        const sec = Number(value.split(":")[1]);
+        const timeouts = { ...wd, toolMaxMs: sec * 1000 };
         ctx.saveToScope({ watchdogTimeouts: timeouts }, "global");
-        sysMsg(ctx, `Watchdog tool-max timeout → ${min}min (global)`);
+        sysMsg(ctx, `Watchdog tool-max timeout → ${sec}s (global)`);
       } else if (value.startsWith("wd-force:")) {
         const sec = Number(value.split(":")[1]);
         const timeouts = { ...wd, forceResolveMs: sec * 1000 };
         ctx.saveToScope({ watchdogTimeouts: timeouts }, "global");
         sysMsg(ctx, `Watchdog force-resolve timeout → ${sec}s (global)`);
->>>>>>> 6b95233 (refactor: remove /watchdog command, merge into /timeouts)      }
+}
     },
   });
 }
