@@ -292,18 +292,68 @@ function handleTimeouts(_input: string, ctx: CommandContext): void {
   const watchdogEnabled = cfg.watchdog ?? false;
   const wd = cfg.watchdogTimeouts ?? {};
 
-const currentTool = `tool:${currentToolTimeout}`;
-   const wdFirstSec = (wd.firstChunkMs ?? 180_000) / 1000;
-   const wdChunkSec = (wd.chunkMs ?? 120_000) / 1000;
-   const wdToolSec = (wd.toolMaxMs ?? 900_000) / 1000;
-   const wdForceSec = (wd.forceResolveMs ?? 5_000) / 1000;
+  const currentTool = `tool:${currentToolTimeout}`;
+  const wdFirstSec = (wd.firstChunkMs ?? 180_000) / 1000;
+  const wdChunkSec = (wd.chunkMs ?? 120_000) / 1000;
+  const wdToolSec = (wd.toolMaxMs ?? 900_000) / 1000;
+  const wdForceSec = (wd.forceResolveMs ?? 5_000) / 1000;
 
-   const wdFirst = `wd-first:${wdFirstSec}`;
-   const wdChunk = `wd-chunk:${wdChunkSec}`;
-   const wdTool = `wd-tool:${wdToolSec}`;
-   const wdForce = `wd-force:${wdForceSec}`;
+  // Prefer exact preset matches, fallback to custom value
+  const wdFirst = ["5", "15", "30", "60", "120", "180"].includes(String(wdFirstSec))
+    ? `wd-first:${wdFirstSec}`
+    : `wd-first:${wdFirstSec}`;
+  const wdChunk = ["5", "15", "30", "60", "120", "180"].includes(String(wdChunkSec))
+    ? `wd-chunk:${wdChunkSec}`
+    : `wd-chunk:${wdChunkSec}`;
+  const wdTool = ["60", "300", "600", "900", "1800", "3600"].includes(String(wdToolSec))
+    ? `wd-tool:${wdToolSec}`
+    : `wd-tool:${wdToolSec}`;
+  const wdForce = ["1", "5", "10", "30"].includes(String(wdForceSec))
+    ? `wd-force:${wdForceSec}`
+    : `wd-force:${wdForceSec}`;
 
-  // Lookup table: category → picker config
+  // Flat preset options with separator labels
+  const options = [
+    { value: "tool:1", label: "Tool: 1 min" },
+    { value: "tool:2", label: "Tool: 2 min", description: "default" },
+    { value: "tool:5", label: "Tool: 5 min" },
+    { value: "tool:10", label: "Tool: 10 min" },
+    { value: "tool:20", label: "Tool: 20 min" },
+    { value: "tool:0", label: "Tool: No timeout", description: "tools run until completion" },
+    { value: "sep_watchdog", label: "─ Watchdog ─", disabled: true },
+    {
+      value: watchdogEnabled ? "watchdog:off" : "watchdog:on",
+      label: `Watchdog: ${watchdogEnabled ? "On" : "Off"}`,
+      description: watchdogEnabled ? "disable auto-retry on stalls" : "enable auto-retry on stalls",
+    },
+    { value: "wd-first:5", label: "WD First Chunk: 5s" },
+    { value: "wd-first:15", label: "WD First Chunk: 15s" },
+    { value: "wd-first:30", label: "WD First Chunk: 30s" },
+    { value: "wd-first:60", label: "WD First Chunk: 60s" },
+    { value: "wd-first:120", label: "WD First Chunk: 120s" },
+    { value: "wd-first:180", label: "WD First Chunk: 180s", description: "default" },
+    { value: "sep_wd_first", label: "─ Chunk Timeout ─", disabled: true },
+    { value: "wd-chunk:5", label: "WD Chunk: 5s" },
+    { value: "wd-chunk:15", label: "WD Chunk: 15s" },
+    { value: "wd-chunk:30", label: "WD Chunk: 30s" },
+    { value: "wd-chunk:60", label: "WD Chunk: 60s" },
+    { value: "wd-chunk:120", label: "WD Chunk: 120s", description: "default" },
+    { value: "wd-chunk:180", label: "WD Chunk: 180s" },
+    { value: "sep_wd_chunk", label: "─ Tool Max Timeout ─", disabled: true },
+    { value: "wd-tool:60", label: "WD Tool Max: 1 min" },
+    { value: "wd-tool:300", label: "WD Tool Max: 5 min" },
+    { value: "wd-tool:600", label: "WD Tool Max: 10 min" },
+    { value: "wd-tool:900", label: "WD Tool Max: 15 min", description: "default" },
+    { value: "wd-tool:1800", label: "WD Tool Max: 30 min" },
+    { value: "wd-tool:3600", label: "WD Tool Max: 60 min" },
+    { value: "sep_wd_tool", label: "─ Force-Resolve Timeout ─", disabled: true },
+    { value: "wd-force:1", label: "WD Force-Resolve: 1s" },
+    { value: "wd-force:5", label: "WD Force-Resolve: 5s", description: "default" },
+    { value: "wd-force:10", label: "WD Force-Resolve: 10s" },
+    { value: "wd-force:30", label: "WD Force-Resolve: 30s" },
+  ];
+
+  // Sub-picker lookup
   const timeoutPickers: Record<string, CommandHandler> = {
     "tool-timeout": (_input: string, ctx: CommandContext) => {
       ctx.openCommandPicker({
@@ -333,16 +383,8 @@ const currentTool = `tool:${currentToolTimeout}`;
         currentValue: watchdogEnabled ? "watchdog:on" : "watchdog:off",
         scopeEnabled: false,
         options: [
-          {
-            value: "watchdog:on",
-            label: "Watchdog: On",
-            description: "enable auto-retry on stalls",
-          },
-          {
-            value: "watchdog:off",
-            label: "Watchdog: Off",
-            description: "disable auto-retry on stalls",
-          },
+          { value: "watchdog:on", label: "Watchdog: On", description: "enable auto-retry on stalls" },
+          { value: "watchdog:off", label: "Watchdog: Off", description: "disable auto-retry on stalls" },
         ],
         onSelect: (value) => {
           const enabled = value === "watchdog:on";
@@ -439,23 +481,14 @@ const currentTool = `tool:${currentToolTimeout}`;
   ctx.openCommandPicker({
     title: "Timeouts & Watchdog",
     icon: icon("clock"),
-    currentValue: currentTool,
+    currentValue: [currentTool, wdFirst, wdChunk, wdTool, wdForce],
     scopeEnabled: false,
-    options: [
-      {
-        value: "tool-timeout",
-        label: "Tool Timeout",
-        description: `${currentToolTimeout === 0 ? "none" : `${currentToolTimeout}m`}`,
-      },
-      { value: "watchdog-toggle", label: "Watchdog", description: watchdogEnabled ? "On" : "Off" },
-      { value: "wd-first", label: "First Chunk Timeout", description: `${wdFirstSec}s` },
-      { value: "wd-chunk", label: "Chunk Timeout", description: `${wdChunkSec}s` },
-      { value: "wd-tool", label: "Tool Max Timeout", description: `${wdToolSec}s` },
-      { value: "wd-force", label: "Force-Resolve Timeout", description: `${wdForceSec}s` },
-    ],
-onSelect: (value) => {
-       const handler = timeoutPickers[value];
-       if (handler) {
+    options,
+    onSelect: (value) => {
+      const handler = timeoutPickers[value];
+      if (handler) {
+        handler("", ctx);
+        return;
       }
     },
   });
@@ -554,7 +587,6 @@ function handleAgentFeatures(_input: string, ctx: CommandContext): void {
     dispatchCache: "Dispatch Cache",
     targetFileValidation: "Target File Validation",
   };
-  // Features that default to off when not explicitly set in config
   const defaultOff = new Set(["desloppify", "verifyEdits"]);
   const isOn = (key: string, state: Record<string, unknown>) =>
     defaultOff.has(key) ? state[key] === true : state[key] !== false;
@@ -883,7 +915,6 @@ const handleTheme: CommandHandler = (input: string, ctx: CommandContext) => {
   const current = useThemeStore.getState().name;
   const isTransparent = useThemeStore.getState().tokens.bgApp === "transparent";
 
-  // Read saved settings from config
   const cfg = loadConfig();
   const savedMsgOpacity =
     typeof cfg.theme?.userMessageOpacity === "number" ? cfg.theme.userMessageOpacity : 100;
@@ -990,7 +1021,6 @@ const handleTheme: CommandHandler = (input: string, ctx: CommandContext) => {
         applyAll(value, transparent, userMsgOpacity, diffOpacity, borderStr);
       },
       onCancel: () => {
-        // Revert theme name preview but keep any toggle/selector changes the user made
         applyAll(originalTheme, transparent, userMsgOpacity, diffOpacity, borderStr);
         ctx.saveToScope(
           themePatch(originalTheme, transparent, userMsgOpacity, diffOpacity, borderStr),
