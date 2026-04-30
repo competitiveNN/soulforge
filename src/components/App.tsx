@@ -1583,8 +1583,9 @@ export function App({
             fallbacks.push(modelId);
             current[fallbackForModel] = fallbacks;
             saveToScope({ modelFallback: current }, modelScope);
-            // closeLlmSelector will handle the close + reopen flow
-            closeLlmSelector();
+            useUIStore.getState().setFallbackForModel(null);
+            useUIStore.getState().closeModal("llmSelector");
+            useUIStore.getState().openModal("routerSettings");
             return;
           }
 
