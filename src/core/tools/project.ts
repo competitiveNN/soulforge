@@ -217,8 +217,23 @@ export async function detectProfile(cwd: string): Promise<ProjectProfile> {
 
   // iOS / Xcode
   if ((await hasExt(".xcodeproj")) || (await hasExt(".xcworkspace"))) {
-    profile.test =
-      "xcodebuild test -scheme \"$(xcodebuild -list -json 2>/dev/null | python3 -c \"import json,sys;print(json.load(sys.stdin)['project']['schemes'][0])\")\" -destination 'platform=iOS Simulator,name=iPhone 16'";
+    // Safely extract the first scheme; xcodebuild may fail or output invalid JSON
+    let scheme = "Scheme";
+    try {
+      const { execFileSync } = await import("node:child_process");
+      const listJson = execFileSync("xcodebuild", ["-list", "-json"], {
+        cwd,
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 10000,
+      })
+        .toString()
+        .trim();
+      const parsed = JSON.parse(listJson);
+      if (parsed?.project?.schemes?.length > 0) {
+        scheme = String(parsed.project.schemes[0]);
+      }
+    } catch {}
+    profile.test = `xcodebuild test -scheme "${scheme}" -destination 'platform=iOS Simulator,name=iPhone 16'`;
     profile.build = "xcodebuild build";
     profile.lint = (await has(".swiftlint.yml")) ? "swiftlint" : null;
     profile.typecheck = "xcodebuild build";
