@@ -3735,6 +3735,9 @@ let stallAbortedAt = 0;
       ]);
       // Don't return — also kill any concurrent generation below
     }
+    // Set userAborted immediately so Ctrl-X is always recognized,
+    // even if onUserAbort handler isn't registered yet
+    userAbortedRef.current = true;
     if (abortRef.current) {
       const pq = pendingQuestionRef.current;
       if (pq) {
