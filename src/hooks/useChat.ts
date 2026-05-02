@@ -3281,6 +3281,8 @@ let stallAbortedAt = 0;
               }
             }
             // Exhausted retries for current model - try fallback models
+            // But always respect user abort (Ctrl-X) - break out of loop
+            if (userAbortedRef.current) break;
             if (fallbackIndex < fallbackModels.length - 1) {
               fallbackIndex++;
               const nextModel = fallbackModels[fallbackIndex];
