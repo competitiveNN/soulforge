@@ -2393,7 +2393,7 @@ const wd = clampWatchdogTimeouts(effectiveConfig.watchdogTimeouts);
           const onUserAbort = () => {
             // Only mark as user-aborted if the abort wasn't from the stall watchdog.
             if (!stallTriggered) {
-              userAborted = true;
+              userAbortedRef.current = true;
             }
           };
           abortController.signal.addEventListener("abort", onUserAbort, { once: true });
