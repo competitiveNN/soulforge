@@ -1888,6 +1888,7 @@ export function useChat({
 
       for (;;) {
         // Reset state for retry
+        userAbortedRef.current = false;
         abortController = new AbortController();
         abortRef.current = abortController;
         fullText = "";
