@@ -418,6 +418,7 @@ export function useChat({
   // tap Allow/Deny, which is not stream inactivity.
   const remoteApprovalActiveRef = useRef(0);
   const webSearchModelLabelRef = useRef<string | null>(null);
+  const userAbortedRef = useRef(false);
   const [activePlan, setActivePlanRaw] = useState<Plan | null>(initialState?.activePlan ?? null);
   const activePlanRef = useRef<Plan | null>(activePlan);
   const setActivePlan = useCallback<typeof setActivePlanRaw>((v) => {
@@ -1857,7 +1858,6 @@ export function useChat({
       let unsubStallWatch1: (() => void) | null = null;
       let unsubStallWatch2: (() => void) | null = null;
       let unsubStallWatch3: (() => void) | null = null;
-      let userAborted = false;
       let stallTriggered = false; // only true when the watchdog itself fires
       // Resolve retry settings once at handleSubmit scope so they're accessible
       // in both the retry loop AND the outer catch block for streaming errors.
@@ -2350,7 +2350,7 @@ const wd = clampWatchdogTimeouts(effectiveConfig.watchdogTimeouts);
           const onUserAbort = () => {
             // Only mark as user-aborted if the abort wasn't from the stall watchdog.
             if (!stallTriggered) {
-              userAborted = true;
+              userAbortedRef.current = true;
             }
           };
           abortController.signal.addEventListener("abort", onUserAbort, { once: true });
@@ -2939,7 +2939,7 @@ let stallAbortedAt = 0;
           // If the watchdog fired but the stream ended gracefully (some providers
           // close the stream instead of throwing on abort), re-throw so the catch
           // block's auto-retry logic kicks in.
-          if (stallTriggered && abortController.signal.aborted && !userAborted) {
+          if (stallTriggered && abortController.signal.aborted && !userAbortedRef.current) {
             throw new Error("Stream stall — abort did not throw");
           }
 
@@ -3119,7 +3119,7 @@ let stallAbortedAt = 0;
           const isStallRetry =
             isAbort &&
             stallTriggered &&
-            !userAborted &&
+            !userAbortedRef.current &&
             stallRetryCountRef.current <= STALL_MAX_RETRIES;
 
           // Retry on transient errors during streaming (e.g. "socket connection closed unexpectedly")
@@ -3757,6 +3757,8 @@ let stallAbortedAt = 0;
       // Snapshot buffers before clearing so the catch block can reconstruct partial content
       abortedSegmentsSnapshot.current = [...streamSegmentsBuffer.current];
       abortedToolCallsSnapshot.current = [...liveToolCallsBuffer.current];
+      // Set userAborted immediately so Ctrl-X is always recognized
+      userAbortedRef.current = true;
       abortRef.current.abort();
       abortRef.current = null;
       setIsLoading(false);
