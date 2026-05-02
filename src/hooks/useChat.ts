@@ -3158,9 +3158,23 @@ let stallAbortedAt = 0;
           const msg = err instanceof Error ? err.message : String(err);
           const chain = causeChain(err);
           const isTransient =
-            /overloaded|529|429|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection/i.test(
-              chain,
+            /overloaded|529|429|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection|enginecore/i.test(
+              msg,
             );
+          const isConnErr =
+            /cannot connect|unable to connect|fetch failed|failed to fetch|socket hang up|econnreset|econnrefused|enotfound|eai_again|network error|stream (?:error|closed)|premature close|terminated|connection (?:error|reset|refused|closed)|enginecore/i.test(
+              msg,
+            );
+          if (!proxyBounced && isConnErr && getActiveProviderId() === "proxy") {
+            proxyBounced = true;
+            const healthy = await proxyHealthProbe().catch(() => false);
+            if (!healthy) {
+              await Promise.race([
+                bounceProxy().catch(() => false),
+                new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),
+              ]);
+            }
+          }
           const isStallRetry =
             isAbort &&
             stallTriggered &&
@@ -3415,12 +3429,10 @@ let stallAbortedAt = 0;
 
           const rawMsg = err instanceof Error ? err.message : String(err);
           const rawStack = err instanceof Error ? err.stack : undefined;
-          const rawChain = causeChain(err);
-          // Log non-abort errors to /errors for debugging — include cause chain + stack trace
+          // Log non-abort errors to /errors for debugging — include stack trace
           if (!isAbort) {
-            const parts = [rawChain];
-            if (rawStack) parts.push(rawStack);
-            logBackgroundError("agent-error", parts.join("\n\n"));
+            const fullError = rawStack ? `${rawMsg}\n\n${rawStack}` : rawMsg;
+            logBackgroundError("agent-error", fullError);
           }
           // ── StopFailure hook ──
           if (!isAbort) {
