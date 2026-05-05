@@ -1925,7 +1925,6 @@ export function useChat({
       if (input !== "Continue." || !stallRetryPendingRef.current) {
         stallRetryCountRef.current = 0;
       }
-      stallRetryPendingRef.current = false;
 
       const responseStartedAt = Date.now();
 
@@ -1933,6 +1932,7 @@ export function useChat({
         // Reset state for retry
         userAbortedRef.current = false;
         stallTriggered = false;
+        stallRetryPendingRef.current = false;
         abortController = new AbortController();
         abortRef.current = abortController;
         fullText = "";
@@ -3178,7 +3178,7 @@ let stallAbortedAt = 0;
               // At most once per submit, hard-capped by an 8s timeout so a stuck
               // ensureProxy() can never block the retry loop.
               const isConnErr =
-                /cannot connect|unable to connect|fetch failed|failed to fetch|socket hang up|econnreset|econnrefused|enotfound|eai_again|network error|stream (?:error|closed)|premature close|terminated|connection (?:error|reset|refused|closed)/i.test(
+                /cannot connect|unable to connect|fetch failed|failed to fetch|socket hang up|econnreset|econnrefused|enotfound|eai_again|network error|stream (?:error|closed)|premature close|terminated|connection (?:error|reset|refused|closed)|enginecore/i.test(
                   msg,
                 );
               if (!proxyBounced && isConnErr && getActiveProviderId() === "proxy") {
@@ -3411,6 +3411,8 @@ let stallAbortedAt = 0;
             // Backoff: 2s first, 5s second (use await to avoid racing finally block)
             const backoffMs = stallRetryCountRef.current === 1 ? 2_000 : 5_000;
             await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            // If user aborted during backoff, don't retry
+            if (userAbortedRef.current) break;
             continue;
           }
 
