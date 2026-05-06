@@ -3159,7 +3159,7 @@ let stallAbortedAt = 0;
           const msg = err instanceof Error ? err.message : String(err);
           const chain = causeChain(err);
           const isTransient =
-            /overloaded|529|429|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection|enginecore/i.test(
+            /overloaded|529|429|403|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection|enginecore/i.test(
               msg,
             );
           const isStallRetry =
@@ -3433,7 +3433,7 @@ let stallAbortedAt = 0;
             }).catch(() => {});
           }
           const isTransientStream =
-            /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(rawMsg);
+            /overloaded|529|429|403|rate.?limit|too many requests|503|502/i.test(rawMsg);
           const errObj =
             err != null && typeof err === "object" ? (err as Record<string, unknown>) : null;
           const apiBody =

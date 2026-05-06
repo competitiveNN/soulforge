@@ -87,6 +87,7 @@ function isRetryable(error: unknown, abortSignal?: AbortSignal): boolean {
     lower.includes("overloaded") ||
     lower.includes("rate limit") ||
     lower.includes("429") ||
+    lower.includes("403") ||
     lower.includes("529") ||
     lower.includes("503") ||
     lower.includes("too many requests") ||
