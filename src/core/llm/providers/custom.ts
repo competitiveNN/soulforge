@@ -35,6 +35,7 @@ export function buildCustomProvider(config: CustomProviderConfig): ProviderDefin
     id: config.id,
     name: config.name ?? config.id,
     envVar,
+    secretKey: `${config.id}-api-key`,
     icon: "\uF29F", // nf-fa-diamond U+F29F
     asciiIcon: "◇",
     custom: true,
