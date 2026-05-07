@@ -2,6 +2,7 @@ import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
 import { ToolLoopAgent } from "ai";
 import { loadConfig } from "../../config/index.js";
+import { logBackgroundError } from "../../stores/errors.js";
 import { EPHEMERAL_CACHE, getModelId, supportsTemperature } from "../llm/provider-options.js";
 import { CORE_RULES } from "../prompts/families/shared-rules.js";
 import { resolveRetrySettings } from "../retry/settings.js";
@@ -9,7 +10,12 @@ import { buildEmberExploreTools, wrapWithBusCache } from "../tools/index.js";
 import type { AgentBus } from "./agent-bus.js";
 import { buildBusTools } from "./bus-tools.js";
 import { buildPrepareStep, buildSymbolLookup } from "./step-utils.js";
-import { repairToolCall } from "./stream-options.js";
+import {
+  describeAbnormalFinish,
+  isAbnormalFinish,
+  MAX_OUTPUT_TOKENS,
+  repairToolCall,
+} from "./stream-options.js";
 
 export function exploreBase(): string {
   return `${CORE_RULES}
@@ -109,6 +115,15 @@ export function createExploreAgent(model: LanguageModel, options?: ExploreAgentO
     model,
     maxRetries: retryMaxRetries,
     ...(supportsTemperature(getModelId(model)) ? { temperature: 0 } : {}),
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    onStepFinish: (step) => {
+      if (isAbnormalFinish(step.finishReason)) {
+        logBackgroundError(
+          "agent-error",
+          `${options?.agentId ?? "explore"}: ${describeAbnormalFinish(step.finishReason)}`,
+        );
+      }
+    },
     // biome-ignore lint/suspicious/noExplicitAny: forgeTools come as Record<string, unknown> for cache sharing
     tools: allTools as any,
     instructions: {

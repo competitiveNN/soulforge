@@ -27,6 +27,7 @@ import { runDesloppify, runVerifier } from "./agent-verification.js";
 import { createCodeAgent } from "./code.js";
 import { createExploreAgent } from "./explore.js";
 import { isApiExportEnabled } from "./step-utils.js";
+import { describeAbnormalFinish, isAbnormalFinish } from "./stream-options.js";
 import { emitAgentStats, emitMultiAgentEvent, emitSubagentStep } from "./subagent-events.js";
 
 export interface SharedCacheRef {
@@ -181,6 +182,7 @@ export function buildStepCallbacks(parentToolCallId: string, agentId?: string, m
     onStepFinish: (step: {
       toolCalls?: unknown[];
       toolResults?: unknown[];
+      finishReason?: string;
       usage?: {
         inputTokens?: number;
         outputTokens?: number;
@@ -191,6 +193,12 @@ export function buildStepCallbacks(parentToolCallId: string, agentId?: string, m
       };
     }) => {
       steps.push(step);
+      if (isAbnormalFinish(step.finishReason)) {
+        logBackgroundError(
+          "agent-error",
+          `${agentId ?? "subagent"}: ${describeAbnormalFinish(step.finishReason)}`,
+        );
+      }
       acc.stepCount++;
       acc.toolUses += step.toolCalls?.length ?? 0;
       acc.input += step.usage?.inputTokens ?? 0;

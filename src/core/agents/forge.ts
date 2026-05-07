@@ -4,6 +4,7 @@ import type { LanguageModel } from "ai";
 import { ToolLoopAgent } from "ai";
 import { z } from "zod";
 import { loadConfig } from "../../config/index.js";
+import { logBackgroundError } from "../../stores/errors.js";
 import type {
   AgentFeatures,
   EditorIntegration,
@@ -32,7 +33,13 @@ import {
 } from "../tools/index.js";
 import { renderTaskList } from "../tools/task-list.js";
 import { isApiExportEnabled } from "./step-utils.js";
-import { repairToolCall, sanitizeMessages } from "./stream-options.js";
+import {
+  describeAbnormalFinish,
+  isAbnormalFinish,
+  MAX_OUTPUT_TOKENS,
+  repairToolCall,
+  sanitizeMessages,
+} from "./stream-options.js";
 import { buildSubagentTools, type SharedCacheRef } from "./subagent-tools.js";
 
 const RESTRICTED_MODES = new Set<ForgeMode>(["architect", "socratic", "challenge", "plan"]);
@@ -776,9 +783,14 @@ export function createForgeAgent({
     model,
     maxRetries: retryMaxRetries,
     ...(supportsTemperature(fullModelId ?? getModelId(model)) ? { temperature: 0 } : {}),
-    // maxOutputTokens: 16384,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
     tools: allTools,
     stopWhen: () => false,
+    onStepFinish: (step) => {
+      if (isAbnormalFinish(step.finishReason)) {
+        logBackgroundError("agent-error", `forge: ${describeAbnormalFinish(step.finishReason)}`);
+      }
+    },
     instructions: isProxyClaude
       ? undefined
       : {

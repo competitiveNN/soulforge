@@ -87,3 +87,36 @@ export async function repairToolCall({
 
   return { ...toolCall, input: repaired };
 }
+/**
+ * Max output tokens per step for all ToolLoopAgents.
+ *
+ * Without this cap, providers/gateways apply their own (often tiny) defaults —
+ * e.g. some return finish_reason="length" at 1024 tokens. The SDK's ToolLoopAgent
+ * treats any non-"tool-calls" finish reason as end-of-turn, so a length-truncated
+ * step terminates the agent silently mid-thought.
+ *
+ * Override via SOULFORGE_MAX_OUTPUT_TOKENS. Mirrors opencode's pattern.
+ */
+export const MAX_OUTPUT_TOKENS = Number(process.env.SOULFORGE_MAX_OUTPUT_TOKENS) || 32_000;
+
+/**
+ * Finish reasons that mean "the model did not voluntarily stop and did not
+ * request a tool" — the agent loop will exit after these but the turn is
+ * incomplete. Surface them as errors instead of treating partial output
+ * as the final answer.
+ */
+export type AbnormalFinishReason = "length" | "content-filter" | "error";
+
+export function isAbnormalFinish(
+  reason: string | undefined | null,
+): reason is AbnormalFinishReason {
+  return reason === "length" || reason === "content-filter" || reason === "error";
+}
+
+export function describeAbnormalFinish(reason: AbnormalFinishReason): string {
+  if (reason === "length")
+    return `Model output truncated at ${MAX_OUTPUT_TOKENS} tokens (finish_reason=length). Set SOULFORGE_MAX_OUTPUT_TOKENS to raise the cap.`;
+  if (reason === "content-filter")
+    return "Model response blocked by content filter (finish_reason=content-filter).";
+  return "Model returned finish_reason=error.";
+}

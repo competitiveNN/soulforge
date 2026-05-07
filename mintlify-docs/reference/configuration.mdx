@@ -225,6 +225,13 @@ Block files from the agent:
 
 Built-ins already cover `.env`, `.pem`, `credentials`, `id_rsa`, `.npmrc`, `.netrc`, `shadow`, `passwd`.
 
+## Environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SOULFORGE_NO_REPOMAP` | unset | Skip the repo-map scan at startup. |
+| `SOULFORGE_MAX_OUTPUT_TOKENS` | `32000` | Per-step output cap for all agents (forge + subagents + web-search). Raise for reasoning models that hit `finish_reason=length`; the agent loop exits silently on truncation, so increasing this prevents mid-thought stops. |
+
 ## Hooks
 
 Covered on the [hooks page](/tools/hooks). Short version: SoulForge reads `hooks.{Event}` from all 5 config sources (Claude Code's three + SoulForge's two), fires all matches.

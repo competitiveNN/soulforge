@@ -2,11 +2,18 @@ import type { LanguageModel } from "ai";
 import { stepCountIs, ToolLoopAgent, tool } from "ai";
 import { z } from "zod";
 import { loadConfig } from "../../config/index.js";
+import { logBackgroundError } from "../../stores/errors.js";
 import { getModelId, supportsTemperature } from "../llm/provider-options.js";
 import { resolveRetrySettings } from "../retry/settings.js";
 import { fetchPageTool } from "../tools/fetch-page.js";
 import { webSearchScraper } from "../tools/web-search-scraper.js";
-import { repairToolCall, sanitizeToolInputsStep } from "./stream-options.js";
+import {
+  describeAbnormalFinish,
+  isAbnormalFinish,
+  MAX_OUTPUT_TOKENS,
+  repairToolCall,
+  sanitizeToolInputsStep,
+} from "./stream-options.js";
 
 const WEB_SEARCH_INSTRUCTIONS = `You are a web search agent. Your job is to find accurate, up-to-date information from the web.
 
@@ -35,6 +42,15 @@ export function createWebSearchAgent(
     model,
     maxRetries: retryMaxRetries,
     ...(supportsTemperature(getModelId(model)) ? { temperature: 0 } : {}),
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    onStepFinish: (step) => {
+      if (isAbnormalFinish(step.finishReason)) {
+        logBackgroundError(
+          "agent-error",
+          `web-search: ${describeAbnormalFinish(step.finishReason)}`,
+        );
+      }
+    },
     tools: {
       web_search: tool({
         description: webSearchScraper.description,
