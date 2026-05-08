@@ -18,6 +18,8 @@ export interface SegmentedControlProps<V extends string | number = string | numb
   /** Trailing text rendered after the segments in muted. */
   suffix?: string;
   bg?: string;
+  /** Called when user presses ←/→ on a focused segmented control. */
+  onChange?: (value: V) => void;
 }
 
 /**

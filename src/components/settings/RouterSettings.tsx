@@ -262,6 +262,8 @@ export function RouterSettings({
     }
   }, [cursor, selectableIndices]);
 
+  const pickerDefs = useMemo(() => ALL_DEFS.filter((d): d is PickerDef => d.kind === 'picker'), []);
+
   const selectedRow = rows[cursor];
   const selectedSlot = selectedRow?.kind === "slot" ? selectedRow.def : null;
   const selectedPicker = selectedRow?.kind === "picker" ? selectedRow.def : null;
@@ -526,6 +528,23 @@ export function RouterSettings({
             );
           })}
         </box>
+        <VSpacer />
+        {pickerDefs.map((def) => {
+          const cur = router?.[def.key];
+          const num = typeof cur === "number" ? cur : def.defaultValue;
+          const isSelected = selectedPicker?.key === def.key;
+          return (
+            <SegmentedControl
+              key={def.key}
+              label={def.label}
+              labelWidth={14}
+              options={def.options.map((o) => ({ value: o, label: String(o) }))}
+              value={num}
+              focused={isSelected}
+              onChange={isSelected ? (value: number) => onPickerChange(def.key, value) : undefined}
+            />
+          );
+        })}
         <VSpacer />
         {selectedIsFallbackRow ? (
           <box flexDirection="column" width={contentW}>
