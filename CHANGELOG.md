@@ -2,6 +2,11 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.14.8] — 2026-05-08
+
+### Bug Fixes
+
+- **install**: self-heal missing libopentui + verify install integrity
 ## [2.14.7] — 2026-05-07
 
 ### Bug Fixes
