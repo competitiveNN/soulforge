@@ -231,34 +231,35 @@ export async function runAgentTask(
         task.dependsOn.map((dep) => bus.waitForAgent(dep, task.timeoutMs ?? getAgentWaitMs())),
       );
     } catch (err) {
-      if (err instanceof DependencyFailedError) {
-        const errMsg = `Skipped: dependency "${err.depAgentId}" failed`;
-        const agentResult = {
-          agentId: task.agentId,
-          role: task.role,
-          task: task.task,
-          result: errMsg,
-          success: false,
-          error: errMsg,
-        } satisfies BusAgentResult;
-        bus.setResult(agentResult);
-        emitMultiAgentEvent({
-          parentToolCallId,
-          type: "agent-error",
-          agentId: task.agentId,
-          role: task.role,
-          task: task.task,
-          totalAgents,
-          error: errMsg,
-        });
-        return {
-          doneResult: null,
-          resultText: errMsg,
-          callbacks: buildStepCallbacks(parentToolCallId, task.agentId),
-          result: agentResult,
-        };
-      }
-      throw err;
+      // Normalize all dependency wait failures (timeouts, aborts, explicit failures) into a skipped result.
+      const errMsg =
+        err instanceof DependencyFailedError
+          ? `Skipped: dependency "${err.depAgentId}" failed`
+          : `Skipped: dependency wait failed: ${err instanceof Error ? err.message : String(err)}`;
+      const agentResult = {
+        agentId: task.agentId,
+        role: task.role,
+        task: task.task,
+        result: errMsg,
+        success: false,
+        error: errMsg,
+      } satisfies BusAgentResult;
+      bus.setResult(agentResult);
+      emitMultiAgentEvent({
+        parentToolCallId,
+        type: "agent-error",
+        agentId: task.agentId,
+        role: task.role,
+        task: task.task,
+        totalAgents,
+        error: errMsg,
+      });
+      return {
+        doneResult: null,
+        resultText: errMsg,
+        callbacks: buildStepCallbacks(parentToolCallId, task.agentId),
+        result: agentResult,
+      };
     }
   }
 
