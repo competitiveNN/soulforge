@@ -3308,10 +3308,17 @@ let stallAbortedAt = 0;
               // All fallbacks exhausted - check cycle count
               cycleCount++;
               if (cycleCount > MAX_CYCLES) {
-                // Escalate: stop retrying and let the error propagate
-                throw new Error(
-                  `Exhausted ${MAX_CYCLES} cycles of model fallbacks. Last error: ${msg}`,
-                );
+                // All fallbacks and primary model exhausted — give up gracefully
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: "system",
+                    content: `All models exhausted after ${MAX_CYCLES} cycles. Last error: ${msg}`,
+                    timestamp: Date.now(),
+                  },
+                ]);
+                break;
               }
               // Cycle back to primary model
               fallbackIndex = -1;
@@ -3582,6 +3589,9 @@ let stallAbortedAt = 0;
           setStreamSegments([]);
           setLiveToolCalls([]);
           resetInProgressTasks(tabId);
+          // Non-transient errors and explicit aborts should exit the retry loop
+          // (Transient retries use `continue` above; stall retries also `continue`)
+          break;
         } finally {
           if (stallWatchdog) clearInterval(stallWatchdog);
           unsubStallWatch1?.();
