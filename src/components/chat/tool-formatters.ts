@@ -180,9 +180,6 @@ export function formatArgs(toolName: string, args?: string): string {
     if (toolName === "discover_pattern" && parsed.query) {
       return String(parsed.query);
     }
-    if (toolName === "test_scaffold" && parsed.file) {
-      return String(parsed.file);
-    }
     if (toolName === "write_plan" || toolName === "plan") {
       if (parsed.title) return String(parsed.title);
       return "plan";
@@ -527,7 +524,6 @@ const PATH_ARG_KEYS: Record<string, readonly string[]> = {
   analyze: ["file"],
   refactor: ["file"],
   project: ["file"],
-  test_scaffold: ["file"],
   discover_pattern: ["file"],
   soul_grep: ["path"],
   soul_find: ["path"],

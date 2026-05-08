@@ -55,7 +55,6 @@ import { soulFindTool } from "./soul-find.js";
 import { soulGrepTool } from "./soul-grep.js";
 import { soulImpactTool } from "./soul-impact.js";
 import { taskListTool } from "./task-list.js";
-import { testScaffoldTool } from "./test-scaffold.js";
 import { buildWebSearchTool } from "./web-search";
 
 export { wrapWithBusCache } from "./bus-cache.js";
@@ -1490,33 +1489,6 @@ export function buildTools(
           if (hit) return hit;
         }
         return discoverPatternTool.execute(args);
-      }),
-    }),
-
-    test_scaffold: tool({
-      ...TEXT_OUTPUT,
-      description: testScaffoldTool.description,
-      inputSchema: z.object({
-        file: z.string().describe("Source file to generate tests for"),
-        framework: z
-          .enum(["vitest", "jest", "bun", "pytest", "go", "cargo"])
-          .nullable()
-          .optional()
-          .transform(nullToUndef)
-          .describe("Test framework (auto-detected from project toolchain)"),
-        output: z
-          .string()
-          .nullable()
-          .optional()
-          .transform(nullToUndef)
-          .describe("Output path for test file"),
-      }),
-      execute: deferExecute(async (args) => {
-        const result = await testScaffoldTool.execute(args);
-        if (result.success && args.output) {
-          claimAfterCompoundEdit(opts?.tabId, opts?.tabLabel, [resolve(args.output)]);
-        }
-        return result;
       }),
     }),
 

@@ -48,7 +48,6 @@ const SOULFORGE_TO_CLAUDE: Record<string, string> = {
   soul_analyze: "SoulAnalyze",
   soul_impact: "SoulImpact",
   discover_pattern: "DiscoverPattern",
-  test_scaffold: "TestScaffold",
   editor: "Editor",
   skills: "Skills",
   request_tools: "RequestTools",

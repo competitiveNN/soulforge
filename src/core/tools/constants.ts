@@ -43,7 +43,6 @@ export const TOOL_CATALOG: Record<string, string> = {
   move_symbol: "Move a symbol between files with import updates",
   rename_file: "Rename/move a file with import path updates",
   refactor: "LSP code transforms: extract function/variable, format, organize imports",
-  test_scaffold: "Generate test skeleton for a file",
   memory: "Read/write persistent memories across sessions",
   editor: "Open file in embedded Neovim editor",
   task_list: "Create and track tasks for the current session",
@@ -77,7 +76,7 @@ export const RESTRICTED_TOOL_NAMES: string[] = [
 
 /** Tools available during plan execution.
  *  Executor gets edit/shell/project + read (fallback if edit fails) + update_plan_step.
- *  No dispatch, explore, discover_pattern, web_search, test_scaffold — the plan already contains everything. */
+ *  No dispatch, explore, discover_pattern, web_search — the plan already contains everything. */
 export const PLAN_EXECUTION_TOOL_NAMES: string[] = [
   "read",
   "edit_file",

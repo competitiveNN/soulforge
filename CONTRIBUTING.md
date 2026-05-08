@@ -134,7 +134,6 @@ src/
 │   │   ├── web-search.ts     # multi-backend web search
 │   │   ├── web-search-scraper.ts # Brave/DDG backends
 │   │   ├── fetch-page.ts     # Jina/Readability page fetcher
-│   │   ├── test-scaffold.ts  # test file generation
 │   │   ├── editor.ts         # neovim integration tools
 │   │   ├── interactive.ts    # user prompts
 │   │   ├── memory.ts         # persistent memory tools

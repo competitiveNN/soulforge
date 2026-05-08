@@ -628,8 +628,7 @@ export function createForgeAgent({
     "rename_symbol",
     "move_symbol",
     "rename_file",
-    // Scaffolding & discovery
-    "test_scaffold",
+    // Discovery
     "discover_pattern",
     // Web
     "web_search",
