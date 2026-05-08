@@ -3160,7 +3160,7 @@ let stallAbortedAt = 0;
           const chain = causeChain(err);
           const isTransient =
             /overloaded|529|429|403|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection|enginecore/i.test(
-              msg,
+              chain,
             );
           const isStallRetry =
             isAbort &&
