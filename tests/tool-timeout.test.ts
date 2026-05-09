@@ -305,11 +305,11 @@ describe("/timeouts command registration", () => {
 		register(map as any);
 		const expected = [
 			"/chat-style", "/mode", "/nvim-config", "/verbose", "/reasoning",
-			"/compaction", "/compaction", "/agent-features", "/instructions",
+			"/compact settings", "/compaction", "/agent-features", "/instructions",
 			"/diff-style", "/editor split", "/split", "/vim-hints", "/model-scope",
+
 "/font nerd", "/font set", "/settings", "/lock-in", "/theme",
-		"/timeouts",
-		];
+"/timeouts", "/watchdog",
 		for (const cmd of expected) {
 			expect(map.has(cmd)).toBe(true);
 		}
@@ -400,7 +400,7 @@ test("top-level option descriptions reflect current settings", () => {
 		expect(values.some((v: string) => v.startsWith("wd-"))).toBe(true);
 	});
 
-	test("default option (tool:2) is marked", () => {
+	test("selecting tool-timeout opens sub-picker with tool options", () => {
 		const handler = getHandler();
 		const { makeCtx, pickerCfgs } = mockCtxChain();
 		const ctx = makeCtx();

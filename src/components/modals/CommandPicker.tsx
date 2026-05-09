@@ -269,10 +269,16 @@ export function CommandPicker({ visible, config, onClose }: Props) {
         for (const sel of config.selectors) initial[sel.key] = sel.value;
         setSelectorState(initial);
       }
-if (idx < 0) {
-         idx = filteredOptions.findIndex((o) => !o.disabled && o.kind !== "separator");
-       }
-       const startIdx = idx >= 0 ? idx : 0;
+
+      let idx = config.currentValue
+        ? Array.isArray(config.currentValue)
+          ? filteredOptions.findIndex((o) => (config.currentValue as string[]).includes(o.value))
+          : filteredOptions.findIndex((o) => o.value === config.currentValue)
+        : -1;
+      if (idx < 0) {
+        idx = filteredOptions.findIndex((o) => !o.disabled && o.kind !== "separator");
+      }
+      const startIdx = idx >= 0 ? idx : 0;
       setCursor(startIdx);
       setScrollOffset(Math.max(0, startIdx - Math.floor(maxVisible / 2)));
       if (config.scopeEnabled) setScope(config.initialScope ?? "project");
@@ -600,14 +606,15 @@ if (idx < 0) {
                 key={option.value}
                 option={option}
                 isActive={vi + clampedOffset === cursor}
-isCurrent={
-                   config.currentValue
-                     ? Array.isArray(config.currentValue)
-                       ? config.currentValue.includes(option.value)
-                       : option.value === config.currentValue
-                     : false
-                 }
-                innerW={innerW}
+
+                isCurrent={
+                  config.currentValue
+                    ? Array.isArray(config.currentValue)
+                      ? config.currentValue.includes(option.value)
+                      : option.value === config.currentValue
+                    : false
+                }
+>>>>>>> 830fa53 (Apply review feedback on /watchdog alias, split timeouts picker, add separator kind, fix test typo)                innerW={innerW}
                 popupBg={POPUP_BG}
                 popupHl={POPUP_HL}
                 brandSecondary={t.brandSecondary}
