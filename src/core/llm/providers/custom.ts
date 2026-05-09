@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type {
   CustomProviderConfig,
   CustomReasoningConfig,
@@ -94,9 +94,11 @@ export function buildCustomProvider(config: CustomProviderConfig): ProviderDefin
     asciiIcon: "◇",
     custom: true,
     customReasoning: config.reasoning,
+    gatewayFrom: config.gatewayFrom,
+    family: config.family,
 
     createModel(modelId: string) {
-      const apiKey = envVar ? (getProviderApiKey(envVar) ?? "") : "custom";
+      const apiKey = envVar ? (getPooledApiKey(config.id, envVar) ?? "") : "custom";
       const client = createOpenAICompatible({
         name: config.id,
         baseURL: config.baseURL,
@@ -108,7 +110,7 @@ export function buildCustomProvider(config: CustomProviderConfig): ProviderDefin
 
     async fetchModels(): Promise<ProviderModelInfo[] | null> {
       if (!config.modelsAPI) return null;
-      const apiKey = envVar ? (getProviderApiKey(envVar) ?? "") : "";
+      const apiKey = envVar ? (getPooledApiKey(config.id, envVar) ?? "") : "";
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
@@ -128,7 +130,10 @@ export function buildCustomProvider(config: CustomProviderConfig): ProviderDefin
     contextWindows: [],
 
     async checkAvailability() {
-      if (envVar) return Boolean(getProviderApiKey(envVar));
+      if (envVar) {
+        const key = getPooledApiKey(config.id, envVar);
+        if (key) return true;
+      }
       try {
         const res = await fetch(config.baseURL, { signal: AbortSignal.timeout(2000) });
         return res.ok || res.status === 401 || res.status === 403;

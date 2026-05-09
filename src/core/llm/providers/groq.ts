@@ -1,5 +1,5 @@
 import { createGroq } from "@ai-sdk/groq";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 interface GroqModel {
@@ -18,7 +18,7 @@ export const groq: ProviderDefinition = {
   description: "Fast inference",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("GROQ_API_KEY");
+    const apiKey = getPooledApiKey("groq");
     if (!apiKey) {
       throw new Error("GROQ_API_KEY is not set");
     }
@@ -26,7 +26,7 @@ export const groq: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey("GROQ_API_KEY");
+    const apiKey = getPooledApiKey("groq");
     if (!apiKey) return null;
     const res = await fetch("https://api.groq.com/openai/v1/models", {
       headers: { Authorization: `Bearer ${apiKey}` },

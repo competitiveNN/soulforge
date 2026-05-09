@@ -1,6 +1,7 @@
+import { hasPooledCredentials } from "../core/llm/credential-pool.js";
 import { checkProviders } from "../core/llm/provider.js";
 import { getAllProviders } from "../core/llm/providers/index.js";
-import { getProviderApiKey, setSecret } from "../core/secrets.js";
+import { setSecret } from "../core/secrets.js";
 import { BOLD, DIM, EXIT_ERROR, GREEN, PURPLE, RED, RST } from "./constants.js";
 
 export async function listProviders(): Promise<void> {
@@ -29,7 +30,7 @@ export async function listModels(providerId?: string): Promise<void> {
   }
 
   for (const provider of targets) {
-    const hasKey = provider.envVar === "" || Boolean(getProviderApiKey(provider.envVar));
+    const hasKey = provider.envVar === "" || hasPooledCredentials(provider.id);
     if (!hasKey && !providerId) continue;
 
     const tag = provider.custom ? ` ${DIM}[custom]${RST}` : "";

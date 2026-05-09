@@ -1,5 +1,5 @@
 import { createXai } from "@ai-sdk/xai";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 interface XaiModel {
@@ -18,7 +18,7 @@ export const xai: ProviderDefinition = {
   description: "Grok models",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("XAI_API_KEY");
+    const apiKey = getPooledApiKey("xai");
     if (!apiKey) {
       throw new Error("XAI_API_KEY is not set");
     }
@@ -26,7 +26,7 @@ export const xai: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey("XAI_API_KEY");
+    const apiKey = getPooledApiKey("xai");
     if (!apiKey) return null;
     const res = await fetch("https://api.x.ai/v1/models", {
       headers: { Authorization: `Bearer ${apiKey}` },

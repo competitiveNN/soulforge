@@ -1,5 +1,5 @@
 import { gateway as aiGateway } from "ai";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 export const vercelGatewayProvider: ProviderDefinition = {
@@ -12,9 +12,11 @@ export const vercelGatewayProvider: ProviderDefinition = {
   asciiIcon: "☁",
   description: "Vercel AI Gateway",
   grouped: true,
+  gatewayFrom: "anthropic",
+  family: "anthropic",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("AI_GATEWAY_API_KEY");
+    const apiKey = getPooledApiKey("vercel_gateway");
     if (!apiKey) {
       throw new Error("AI_GATEWAY_API_KEY is not set");
     }

@@ -60,6 +60,13 @@ export interface ProviderDefinition {
   /** Reasoning/thinking config for custom providers.
    *  Injected into every request body as OpenAI-style, DashScope-style, or raw params. */
   customReasoning?: CustomReasoningConfig;
+  /** For gateway providers: the upstream provider whose key we can forward.
+   *  e.g. openrouter → "anthropic" means OpenRouter accepts the Anthropic API key. */
+  gatewayFrom?: string;
+  /** Providers that share a common key can declare a family.
+   *  e.g. anthropic family means any provider with family "anthropic" will
+   *  try ANTHROPIC_API_KEY as a fallback. */
+  family?: string;
 }
 
 export interface CustomProviderConfig {
@@ -69,6 +76,10 @@ export interface CustomProviderConfig {
   envVar?: string;
   models?: (string | ProviderModelInfo)[];
   modelsAPI?: string;
+  /** For gateway custom providers: the upstream provider whose key we can forward. */
+  gatewayFrom?: string;
+  /** For custom providers that share a key with a known family (e.g. "anthropic"). */
+  family?: string;
   /** Reasoning/thinking configuration for this provider.
    *  Enables thinking control for models that support it via OpenAI-compatible APIs. */
   reasoning?: CustomReasoningConfig;

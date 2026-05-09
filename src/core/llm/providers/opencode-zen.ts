@@ -1,6 +1,6 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import { SHARED_CONTEXT_WINDOWS } from "./context-windows.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
@@ -16,9 +16,10 @@ export const opencodeZen: ProviderDefinition = {
   asciiIcon: "Z",
   description: "GPT, Claude, Gemini, MiniMax, GLM, Kimi, Qwen, Nemotron models",
   grouped: true,
+  family: "anthropic",
 
   createModel(modelId: string): LanguageModel {
-    const apiKey = getProviderApiKey("OPENCODE_ZEN_API_KEY");
+    const apiKey = getPooledApiKey("opencode-zen");
     if (!apiKey) {
       throw new Error("OPENCODE_ZEN_API_KEY is not set");
     }
@@ -33,7 +34,7 @@ export const opencodeZen: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey("OPENCODE_ZEN_API_KEY");
+    const apiKey = getPooledApiKey("opencode-zen");
     if (!apiKey) return null;
     try {
       const res = await fetch("https://opencode.ai/zen/v1/models", {
