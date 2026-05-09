@@ -1,9 +1,9 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { loadConfig } from "../../../config/index.js";
-import { getProviderApiKey } from "../../secrets.js";
 import { getCompatReasoningBody } from "../compat-reasoning.js";
 import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 export const deepseek: ProviderDefinition = {
@@ -17,7 +17,7 @@ export const deepseek: ProviderDefinition = {
   description: "DeepSeek models",
 
   createModel(modelId: string): LanguageModel {
-    const apiKey = getProviderApiKey("DEEPSEEK_API_KEY");
+    const apiKey = getPooledApiKey("deepseek");
     if (!apiKey) {
       throw new Error("DEEPSEEK_API_KEY is not set");
     }
@@ -35,7 +35,7 @@ export const deepseek: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey("DEEPSEEK_API_KEY");
+    const apiKey = getPooledApiKey("deepseek");
     if (!apiKey) return null;
     const res = await fetch("https://api.deepseek.com/models", {
       headers: { Authorization: `Bearer ${apiKey}` },

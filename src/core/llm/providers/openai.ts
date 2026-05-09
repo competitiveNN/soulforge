@@ -1,5 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 interface OpenAIModel {
@@ -20,7 +20,7 @@ export const openai: ProviderDefinition = {
   description: "GPT & o-series",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("OPENAI_API_KEY");
+    const apiKey = getPooledApiKey("openai");
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY is not set");
     }
@@ -28,7 +28,7 @@ export const openai: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey("OPENAI_API_KEY");
+    const apiKey = getPooledApiKey("openai");
     if (!apiKey) return null;
     const res = await fetch("https://api.openai.com/v1/models", {
       headers: { Authorization: `Bearer ${apiKey}` },

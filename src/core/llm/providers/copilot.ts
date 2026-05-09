@@ -1,9 +1,9 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { loadConfig } from "../../../config/index.js";
-import { getProviderApiKey } from "../../secrets.js";
 import { CURRENT_VERSION } from "../../version.js";
 import { getCompatReasoningBody } from "../compat-reasoning.js";
+import { getPooledApiKey, hasPooledCredentials } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 const ENV_VAR = "COPILOT_API_KEY";
@@ -73,7 +73,7 @@ function invalidateBearer(): void {
 }
 
 function getGitHubToken(): string {
-  const stored = getProviderApiKey(ENV_VAR);
+  const stored = getPooledApiKey("copilot");
   if (stored) return stored;
   throw new Error(
     "GitHub Copilot requires an OAuth token. Sign in via VS Code or JetBrains, then copy oauth_token from ~/.config/github-copilot/apps.json and save it with /keys or --set-key copilot.",
@@ -252,7 +252,7 @@ export const copilot: ProviderDefinition = {
   ],
 
   async checkAvailability() {
-    return !!getProviderApiKey(ENV_VAR);
+    return hasPooledCredentials("copilot");
   },
 
   grouped: true,

@@ -1,5 +1,5 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import { SHARED_CONTEXT_WINDOWS } from "./context-windows.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
@@ -13,9 +13,11 @@ export const openrouter: ProviderDefinition = {
   asciiIcon: "⊕",
   description: "Multi-provider router",
   grouped: true,
+  gatewayFrom: "anthropic",
+  family: "anthropic",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("OPENROUTER_API_KEY");
+    const apiKey = getPooledApiKey("openrouter");
     if (!apiKey) {
       throw new Error("OPENROUTER_API_KEY is not set");
     }

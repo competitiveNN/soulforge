@@ -1,5 +1,5 @@
 import { createMistral } from "@ai-sdk/mistral";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 interface MistralModel {
@@ -19,7 +19,7 @@ export const mistral: ProviderDefinition = {
   description: "Mistral & Codestral",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("MISTRAL_API_KEY");
+    const apiKey = getPooledApiKey("mistral");
     if (!apiKey) {
       throw new Error("MISTRAL_API_KEY is not set");
     }
@@ -27,7 +27,7 @@ export const mistral: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey("MISTRAL_API_KEY");
+    const apiKey = getPooledApiKey("mistral");
     if (!apiKey) return null;
     const res = await fetch("https://api.mistral.ai/v1/models", {
       headers: { Authorization: `Bearer ${apiKey}` },

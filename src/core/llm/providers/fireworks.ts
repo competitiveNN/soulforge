@@ -1,8 +1,8 @@
 import { createFireworks } from "@ai-sdk/fireworks";
 import { loadConfig } from "../../../config/index.js";
-import { getProviderApiKey } from "../../secrets.js";
 import { getCompatReasoningBody } from "../compat-reasoning.js";
 import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 export const fireworks: ProviderDefinition = {
@@ -16,7 +16,7 @@ export const fireworks: ProviderDefinition = {
   description: "Fast open models",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("FIREWORKS_API_KEY");
+    const apiKey = getPooledApiKey("fireworks");
     if (!apiKey) {
       throw new Error("FIREWORKS_API_KEY is not set");
     }
@@ -29,7 +29,7 @@ export const fireworks: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey("FIREWORKS_API_KEY");
+    const apiKey = getPooledApiKey("fireworks");
     if (!apiKey) return null;
     const res = await fetch("https://api.fireworks.ai/inference/v1/models", {
       headers: { Authorization: `Bearer ${apiKey}` },

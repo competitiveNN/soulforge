@@ -1,8 +1,8 @@
 import { createMinimax } from "vercel-minimax-ai-provider";
 import { loadConfig } from "../../../config/index.js";
-import { getProviderApiKey } from "../../secrets.js";
 import { getCompatReasoningBody } from "../compat-reasoning.js";
 import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 export const minimax: ProviderDefinition = {
@@ -16,7 +16,7 @@ export const minimax: ProviderDefinition = {
   description: "M2 series models",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("MINIMAX_API_KEY");
+    const apiKey = getPooledApiKey("minimax");
     if (!apiKey) {
       throw new Error("MINIMAX_API_KEY is not set");
     }

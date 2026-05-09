@@ -1,5 +1,5 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 interface GoogleModel {
@@ -21,7 +21,7 @@ export const google: ProviderDefinition = {
   description: "Gemini models",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("GOOGLE_GENERATIVE_AI_API_KEY");
+    const apiKey = getPooledApiKey("google");
     if (!apiKey) {
       throw new Error("GOOGLE_GENERATIVE_AI_API_KEY is not set");
     }
@@ -29,7 +29,7 @@ export const google: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey("GOOGLE_GENERATIVE_AI_API_KEY");
+    const apiKey = getPooledApiKey("google");
     if (!apiKey) return null;
     const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
       headers: { "x-goog-api-key": apiKey },

@@ -1,5 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 interface AnthropicModel {
@@ -18,9 +18,10 @@ export const anthropic: ProviderDefinition = {
   keyUrl: "console.anthropic.com",
   asciiIcon: "A",
   description: "Claude models",
+  family: "anthropic",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey("ANTHROPIC_API_KEY");
+    const apiKey = getPooledApiKey("anthropic");
     if (!apiKey) {
       throw new Error("ANTHROPIC_API_KEY is not set");
     }
@@ -28,7 +29,7 @@ export const anthropic: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey("ANTHROPIC_API_KEY");
+    const apiKey = getPooledApiKey("anthropic");
     if (!apiKey) return null;
     const res = await fetch("https://api.anthropic.com/v1/models", {
       headers: {

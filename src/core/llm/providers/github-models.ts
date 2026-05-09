@@ -1,8 +1,8 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { loadConfig } from "../../../config/index.js";
-import { getProviderApiKey } from "../../secrets.js";
 import { getCompatReasoningBody } from "../compat-reasoning.js";
 import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 const ENV_VAR = "GITHUB_MODELS_API_KEY";
@@ -32,7 +32,7 @@ export const githubModels: ProviderDefinition = {
   description: "Free with GitHub PAT",
 
   createModel(modelId: string) {
-    const apiKey = getProviderApiKey(ENV_VAR);
+    const apiKey = getPooledApiKey("github-models");
     if (!apiKey) {
       throw new Error(
         `${ENV_VAR} is not set. Create a fine-grained PAT with models:read at github.com/settings/tokens`,
@@ -49,7 +49,7 @@ export const githubModels: ProviderDefinition = {
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
-    const apiKey = getProviderApiKey(ENV_VAR);
+    const apiKey = getPooledApiKey("github-models");
     if (!apiKey) return null;
     const res = await fetch(CATALOG_URL, {
       headers: { Authorization: `Bearer ${apiKey}`, ...GH_HEADERS },

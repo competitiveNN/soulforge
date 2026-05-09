@@ -1,5 +1,5 @@
 import { toErrorMessage } from "../../utils/errors.js";
-// getProviderApiKey is used in other parts of the file or removed if unused
+// getPooledApiKey handles direct keys, gateway fallback, and family pooling
 import { getIOClient } from "../workers/io-client.js";
 import { getPooledApiKey } from "./credential-pool.js";
 import { inferModelGroup } from "./model-utils.js";

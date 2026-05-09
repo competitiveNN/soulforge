@@ -1,5 +1,4 @@
 import type { LanguageModel } from "ai";
-import { getProviderApiKey } from "../secrets.js";
 import { getPooledApiKey } from "./credential-pool.js";
 import { getAllProviders, getProvider } from "./providers/index.js";
 
@@ -35,10 +34,8 @@ export async function checkProviders(): Promise<ProviderStatus[]> {
       } else if (p.envVar === "") {
         available = true;
       } else {
-        // Check direct key first, then pooled credentials
-        const directKey = p.envVar ? getProviderApiKey(p.envVar) : undefined;
-        const pooledKey = getPooledApiKey(p.id);
-        available = Boolean(directKey || pooledKey);
+        // Use pooled credential resolution (direct key, gateway fallback, or family match)
+        available = Boolean(getPooledApiKey(p.id));
       }
       return { id: p.id, name: p.name, envVar: p.envVar, available };
     }),

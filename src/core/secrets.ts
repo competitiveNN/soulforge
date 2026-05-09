@@ -190,14 +190,6 @@ export function getSecret(key: SecretKey, priority: KeyPriority = _defaultPriori
     if (!envVar) return null;
     const val = process.env[envVar];
     if (!val) return null;
-    // Check if it's a comma-separated list (multiple keys)
-    if (val.includes(",")) {
-      const keys = val
-        .split(",")
-        .map((k: string) => k.trim())
-        .filter(Boolean);
-      if (keys.length > 0) return keys[0] ?? null; // Simplified: just return first for now
-    }
     return val;
   };
   const getApp = () => {
@@ -369,39 +361,91 @@ export type { SecretKey };
 const ENV_TO_SECRET = new Map(Object.entries(ENV_MAP).map(([k, v]) => [v, k as SecretKey]));
 
 /**
- * Resolve a provider API key: checks process.env first, then secrets store.
+ * Get all available keys for a given env var, including comma-separated
+ * values from the environment and any pooled keys from the secrets store.
+ * Used by the credential pool for round-robin key rotation.
+ */
+export function getAllKeys(envVar: string): string[] {
+  const keys: string[] = [];
+
+  // Keys from environment (comma-separated values)
+  const envVal = process.env[envVar];
+  if (envVal) {
+    for (const k of envVal
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)) {
+      if (!keys.includes(k)) keys.push(k);
+    }
+  }
+
+  // Keys from secrets store (pooled)
+  const secretKey = ENV_TO_SECRET.get(envVar);
+  if (secretKey) {
+    const secretVal = getSecret(secretKey, "app");
+    if (secretVal && !keys.includes(secretVal)) keys.push(secretVal);
+  }
+  // Also check direct file/keychain for non-secretKey env vars (e.g. secrets.json keyed by env var)
+  else {
+    const fileVal = fileRead()[envVar];
+    if (fileVal && !keys.includes(fileVal)) keys.push(fileVal);
+    const allPooled = getPooledKeys(envVar as SecretKey);
+    for (const pk of allPooled) {
+      if (!keys.includes(pk)) keys.push(pk);
+    }
+  }
+
+  return keys;
+}
+
+/**
+ * Resolve provider API key(s): checks process.env first, then secrets store.
+ * Returns a Set of all available keys for the given env var (including
+ * comma-separated values from the environment and any pooled keys from the
+ * secrets store). Use .size to check availability, .values().next().value
+ * to get a single key, or .has() for O(1) membership checks.
+ *
  * Used by provider createModel/fetchModels as a drop-in for process.env[envVar].
  */
 export function getProviderApiKey(
   envVar: string,
   priority: KeyPriority = _defaultPriority,
-): string | undefined {
-  const secretKey = ENV_TO_SECRET.get(envVar);
-  if (secretKey) return getSecret(secretKey, priority) ?? undefined;
+): Set<string> {
+  const keys = new Set<string>();
 
-  const getEnv = () => {
-    const val = process.env[envVar];
-    if (!val) return undefined;
-    // Check if it's a comma-separated list (multiple keys)
-    if (val.includes(",")) {
-      const keys = val
+  const addEnvKeys = () => {
+    const envVal = process.env[envVar];
+    if (envVal) {
+      for (const k of envVal
         .split(",")
-        .map((k: string) => k.trim())
-        .filter(Boolean);
-      if (keys.length > 0) return keys[0] ?? undefined; // Simplified: just return first for now
+        .map((s) => s.trim())
+        .filter(Boolean)) {
+        keys.add(k);
+      }
     }
-    return val;
   };
-  const getApp = () => {
-    if (keychainAvailable()) {
-      const value = keychainGet(envVar as SecretKey);
-      if (value) return value;
+
+  const addAppKeys = () => {
+    const secretKey = ENV_TO_SECRET.get(envVar);
+    if (secretKey) {
+      const val = getSecret(secretKey, priority);
+      if (val) keys.add(val);
+    } else {
+      const fileVal = fileRead()[envVar];
+      if (fileVal) keys.add(fileVal);
+      for (const pk of getPooledKeys(envVar as SecretKey)) {
+        keys.add(pk);
+      }
     }
-    return fileRead()[envVar] ?? undefined;
   };
 
   if (priority === "app") {
-    return getApp() ?? getEnv();
+    addAppKeys();
+    addEnvKeys();
+  } else {
+    addEnvKeys();
+    addAppKeys();
   }
-  return getEnv() ?? getApp();
+
+  return keys;
 }

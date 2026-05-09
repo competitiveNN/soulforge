@@ -1,9 +1,9 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { loadConfig } from "../../../config/index.js";
-import { getProviderApiKey } from "../../secrets.js";
 import { getCompatReasoningBody } from "../compat-reasoning.js";
 import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import type { ProviderDefinition } from "./types.js";
 
 const BASE_URL = "https://opencode.ai/zen/go/v1";
@@ -17,9 +17,11 @@ export const opencodeGo: ProviderDefinition = {
   keyUrl: "opencode.ai",
   asciiIcon: "GO",
   description: "GLM, Kimi, MiMo, MiniMax models",
+  gatewayFrom: "anthropic",
+  family: "anthropic",
 
   createModel(modelId: string): LanguageModel {
-    const apiKey = getProviderApiKey("OPENCODE_GO_API_KEY");
+    const apiKey = getPooledApiKey("opencode-go");
     if (!apiKey) {
       throw new Error("OPENCODE_GO_API_KEY is not set");
     }

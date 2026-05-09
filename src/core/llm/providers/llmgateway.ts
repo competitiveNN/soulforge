@@ -1,5 +1,5 @@
 import { createLLMGateway } from "@llmgateway/ai-sdk-provider";
-import { getProviderApiKey } from "../../secrets.js";
+import { getPooledApiKey } from "../credential-pool.js";
 import { SHARED_CONTEXT_WINDOWS } from "./context-windows.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
@@ -13,9 +13,11 @@ export const llmgateway: ProviderDefinition = {
   asciiIcon: "☁",
   description: "All models, one key",
   grouped: true,
+  gatewayFrom: "anthropic",
+  family: "anthropic",
 
   createModel(modelId) {
-    const apiKey = getProviderApiKey("LLM_GATEWAY_API_KEY");
+    const apiKey = getPooledApiKey("llmgateway");
     if (!apiKey) {
       throw new Error("LLM_GATEWAY_API_KEY is not set");
     }
