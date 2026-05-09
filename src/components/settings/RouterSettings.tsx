@@ -355,6 +355,11 @@ export function RouterSettings({
       }
       return;
     }
+  });
+
+  useKeyboard((evt) => {
+    if (!visible) return;
+
     if (evt.name === "d" || evt.name === "delete" || evt.name === "backspace") {
       if (selectedIsFallbackRow && selectedFallbackModelId) {
         onClearFallbacks(selectedFallbackModelId);
