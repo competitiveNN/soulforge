@@ -1034,6 +1034,31 @@ export class MemoryDB {
       summary: summaryById.get(s.id) ?? "",
     }));
   }
+
+  /**
+   * Resolve a possibly-truncated id to a full id. Returns:
+   *  - the input itself if it's already a full id (exact hit)
+   *  - the unique full id if the input is a prefix of exactly one row
+   *  - { ambiguous: [...candidates] } if 2+ rows match
+   *  - null if zero rows match
+   *
+   * Hidden rows are NOT excluded — caller decides (delete/restore both need
+   * to see hidden rows; pin/get filter at their layer).
+   */
+  resolveId(prefix: string): string | null | { ambiguous: string[] } {
+    if (!prefix) return null;
+    const exact = this.db
+      .query<{ id: string }, [string]>("SELECT id FROM memories WHERE id = ?")
+      .get(prefix);
+    if (exact) return exact.id;
+    if (prefix.length < 4) return null;
+    const rows = this.db
+      .query<{ id: string }, [string]>("SELECT id FROM memories WHERE id LIKE ? || '%' LIMIT 5")
+      .all(prefix);
+    if (rows.length === 0) return null;
+    if (rows.length === 1) return rows[0]?.id;
+    return { ambiguous: rows.map((r) => r.id) };
+  }
 }
 
 function normalize(s: string): string {

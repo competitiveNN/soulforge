@@ -477,4 +477,32 @@ export class MemoryManager {
   }
 
   private _globalDir: string;
+
+  /**
+   * Resolve an id (full or ≥4-char prefix) across the requested read scopes.
+   * Returns the unique scoped record, null if no match, or {ambiguous} when
+   * the prefix matches 2+ memories (across all scopes combined).
+   */
+  resolveId(
+    scope: MemoryScope | "both" | "all",
+    prefix: string,
+  ): ScopedMemory | null | { ambiguous: Array<{ scope: MemoryScope; id: string }> } {
+    if (!prefix) return null;
+    const matches: Array<{ scope: MemoryScope; id: string }> = [];
+    for (const db of this.getReadDbs(scope)) {
+      const r = db.resolveId(prefix);
+      if (typeof r === "string") {
+        matches.push({ scope: db.scope, id: r });
+      } else if (r && typeof r === "object" && "ambiguous" in r) {
+        for (const id of r.ambiguous) matches.push({ scope: db.scope, id });
+      }
+    }
+    if (matches.length === 0) return null;
+    if (matches.length === 1) {
+      const m = matches[0];
+      if (!m) return null;
+      return this.findById(m.scope, m.id);
+    }
+    return { ambiguous: matches };
+  }
 }

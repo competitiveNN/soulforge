@@ -229,11 +229,18 @@ export function createMemoryTool(deps: MemoryManager | CreateMemoryToolDeps) {
             error: "disabled",
           };
         }
-        const found = manager.findById(readScope, args.id);
-        if (!found) {
+        const resolved = manager.resolveId(readScope, args.id);
+        if (!resolved) {
           return { success: false, output: `Memory not found: ${args.id}`, error: "not_found" };
         }
-        return { success: true, output: formatRecordFull(found) };
+        if ("ambiguous" in resolved) {
+          return {
+            success: false,
+            output: ambiguousMsg(args.id, resolved.ambiguous),
+            error: "ambiguous_id",
+          };
+        }
+        return { success: true, output: formatRecordFull(resolved) };
       }
 
       function handleList() {
@@ -300,9 +307,11 @@ export function createMemoryTool(deps: MemoryManager | CreateMemoryToolDeps) {
             error: "bad_scope",
           };
         }
-        const ok = manager.softDelete(scope, args.id);
+        const fullId = resolveAndCheckScope(scope, args.id, "delete");
+        if (typeof fullId !== "string") return fullId;
+        const ok = manager.softDelete(scope, fullId);
         if (!ok) return { success: false, output: `Not found: ${args.id}`, error: "not_found" };
-        return { success: true, output: `Soft-deleted ${args.id.slice(0, 8)} (restorable)` };
+        return { success: true, output: `Soft-deleted ${fullId.slice(0, 8)} (restorable)` };
       }
 
       function handleRestore() {
@@ -317,9 +326,11 @@ export function createMemoryTool(deps: MemoryManager | CreateMemoryToolDeps) {
             error: "bad_scope",
           };
         }
-        const ok = manager.restore(scope, args.id);
+        const fullId = resolveAndCheckScope(scope, args.id, "restore");
+        if (typeof fullId !== "string") return fullId;
+        const ok = manager.restore(scope, fullId);
         if (!ok) return { success: false, output: `Not found: ${args.id}`, error: "not_found" };
-        return { success: true, output: `Restored ${args.id.slice(0, 8)}` };
+        return { success: true, output: `Restored ${fullId.slice(0, 8)}` };
       }
 
       function handleListPending() {
@@ -345,7 +356,9 @@ export function createMemoryTool(deps: MemoryManager | CreateMemoryToolDeps) {
             error: "bad_scope",
           };
         }
-        const record = manager.acceptPending(args.id, writeScope);
+        const fullId = resolvePendingId(args.id);
+        if (typeof fullId !== "string") return fullId;
+        const record = manager.acceptPending(fullId, writeScope);
         if (!record)
           return { success: false, output: `Pending not found: ${args.id}`, error: "not_found" };
         return {
@@ -358,10 +371,12 @@ export function createMemoryTool(deps: MemoryManager | CreateMemoryToolDeps) {
       function handleRejectPending() {
         if (!args.id)
           return { success: false, output: "id required for reject_pending", error: "missing_id" };
-        const ok = manager.rejectPending(args.id);
+        const fullId = resolvePendingId(args.id);
+        if (typeof fullId !== "string") return fullId;
+        const ok = manager.rejectPending(fullId);
         if (!ok)
           return { success: false, output: `Pending not found: ${args.id}`, error: "not_found" };
-        return { success: true, output: `Rejected pending ${args.id.slice(0, 8)}` };
+        return { success: true, output: `Rejected pending ${fullId.slice(0, 8)}` };
       }
 
       function handlePin(pin: boolean) {
@@ -376,9 +391,11 @@ export function createMemoryTool(deps: MemoryManager | CreateMemoryToolDeps) {
             error: "bad_scope",
           };
         }
-        const ok = pin ? manager.pin(scope, args.id) : manager.unpin(scope, args.id);
+        const fullId = resolveAndCheckScope(scope, args.id, pin ? "pin" : "unpin");
+        if (typeof fullId !== "string") return fullId;
+        const ok = pin ? manager.pin(scope, fullId) : manager.unpin(scope, fullId);
         if (!ok) return { success: false, output: `Not found: ${args.id}`, error: "not_found" };
-        return { success: true, output: `${pin ? "Pinned" : "Unpinned"} ${args.id.slice(0, 8)}` };
+        return { success: true, output: `${pin ? "Pinned" : "Unpinned"} ${fullId.slice(0, 8)}` };
       }
     },
   });
@@ -390,6 +407,59 @@ export function createMemoryTool(deps: MemoryManager | CreateMemoryToolDeps) {
     if (raw === "none") return "disabled";
     if (raw !== "project" && raw !== "global") return "invalid";
     return raw;
+  }
+
+  function ambiguousMsg(input: string, candidates: Array<{ scope: string; id: string } | string>) {
+    const lines = candidates.map((c) =>
+      typeof c === "string" ? `  - ${c}` : `  - [${c.scope}] ${c.id}`,
+    );
+    return `Ambiguous id "${input}" — matches ${String(candidates.length)} memories:\n${lines.join("\n")}\nUse a longer prefix or the full id.`;
+  }
+
+  /**
+   * Resolve a possibly-truncated memory id within a write scope. The id must
+   * resolve to exactly one memory in that scope. Returns the canonical id
+   * string, or a tool-shaped error object the caller should return as-is.
+   */
+  function resolveAndCheckScope(
+    scope: MemoryScope,
+    input: string,
+    op: string,
+  ): string | { success: false; output: string; error: string } {
+    void op;
+    const r = manager.resolveId(scope, input);
+    if (!r) return { success: false, output: `Not found: ${input}`, error: "not_found" };
+    if ("ambiguous" in r) {
+      return { success: false, output: ambiguousMsg(input, r.ambiguous), error: "ambiguous_id" };
+    }
+    return r.id;
+  }
+
+  /** Same shape as resolveAndCheckScope but for the pending store (no scope). */
+  function resolvePendingId(
+    input: string,
+  ): string | { success: false; output: string; error: string } {
+    const items = manager.listPending();
+    const exact = items.find((p) => p.id === input);
+    if (exact) return exact.id;
+    if (input.length < 4) {
+      return { success: false, output: `Pending not found: ${input}`, error: "not_found" };
+    }
+    const prefix = items.filter((p) => p.id.startsWith(input));
+    if (prefix.length === 0) {
+      return { success: false, output: `Pending not found: ${input}`, error: "not_found" };
+    }
+    if (prefix.length > 1) {
+      return {
+        success: false,
+        output: ambiguousMsg(
+          input,
+          prefix.map((p) => p.id),
+        ),
+        error: "ambiguous_id",
+      };
+    }
+    return prefix[0]?.id;
   }
 
   function resolveReadScope(
