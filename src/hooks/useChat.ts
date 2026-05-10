@@ -192,6 +192,8 @@ export interface UseChatOptions {
   initialState?: TabState;
   getWorkspaceSnapshot?: () => WorkspaceSnapshot;
   visible?: boolean;
+  /** Called when the active model changes due to a fallback swap */
+  onModelChange?: (modelId: string) => void;
 }
 
 export interface ChatInstance {
@@ -262,6 +264,7 @@ export function useChat({
   initialState,
   getWorkspaceSnapshot,
   visible = true,
+  onModelChange,
 }: UseChatOptions): ChatInstance {
   const [messages, setMessages] = useState<ChatMessage[]>(initialState?.messages ?? []);
   const [coreMessages, setCoreMessages] = useState<ModelMessage[]>(
@@ -3252,6 +3255,7 @@ let stallAbortedAt = 0;
               activeModelRef.current = nextModel;
               streamRetryCount = 0; // Reset retry count for the new model
               setActiveModel(nextModel);
+              onModelChange?.(nextModel);
               setMessages((prev) => [
                 ...prev,
                 {
@@ -3717,6 +3721,7 @@ let stallAbortedAt = 0;
       tabId,
       tabLabel,
       setForgeMode,
+      onModelChange,
     ],
   );
   handleSubmitRef.current = handleSubmit;

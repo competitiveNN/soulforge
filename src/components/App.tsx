@@ -1146,6 +1146,17 @@ export function App({
     };
   }, [activeModelForHeader]);
 
+  const syncActiveModel = useCallback(
+    (modelId: string) => {
+      const chat = tabMgr.getActiveChat();
+      if (chat) {
+        chat.setActiveModel(modelId);
+      }
+      setActiveModelForHeader(modelId);
+    },
+    [tabMgr],
+  );
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: narrow trigger — only re-run when nvimError changes
   useEffect(() => {
     if (nvimError) addSystemMessage(`Neovim error: ${nvimError}`);
@@ -1326,10 +1337,7 @@ export function App({
         detectScope,
         agentFeatures: effectiveConfig.agentFeatures,
         instructionFiles: effectiveConfig.instructionFiles,
-        syncActiveModel: (modelId: string) => {
-          chat.setActiveModel(modelId);
-          setActiveModelForHeader(modelId);
-        },
+        syncActiveModel,
       });
     },
     [
@@ -1354,6 +1362,7 @@ export function App({
       effectiveConfig.instructionFiles,
       handleNewSession,
       effectiveConfig.watchdog,
+      syncActiveModel,
     ],
   );
 
@@ -1541,6 +1550,7 @@ export function App({
             onSuspend={handleSuspend}
             onCommand={handleTabCommand}
             onModeChange={setForgeModeHeader}
+            onModelChange={syncActiveModel}
             onExit={handleExit}
             registerChat={tabMgr.registerChat}
             unregisterChat={tabMgr.unregisterChat}
