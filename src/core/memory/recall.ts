@@ -272,20 +272,25 @@ function computeSignals(input: SignalInputs): MemoryRecallSignals {
   return {
     fts_unicode: input.unicodeRank,
     fts_trigram: input.trigramRank,
-    recency: -0.05 * ageDays,
-    use_count: 0.1 * Math.log(input.record.use_count + 1),
+    // Soft, bounded recency penalty. Older = less juice, but never negative
+    // enough to flip a strong directional match. Half-life ≈ 14 days.
+    recency: -0.05 * (1 - Math.exp(-ageDays / 14)),
+    use_count: 0.05 * Math.log(input.record.use_count + 1),
     file_affinity: input.fileAffinityHit ? 1 : 0,
-    blast_radius: 0.1 * Math.log(input.blastRadius + 1),
-    pinned: input.record.pinned ? 0.2 : 0,
+    blast_radius: 0.05 * Math.log(input.blastRadius + 1),
+    pinned: input.record.pinned ? 0.1 : 0,
     semantic: input.semantic,
     semantic_rank: input.semanticRank,
   };
 }
 
 function combineScore(signals: MemoryRecallSignals): number {
-  // RRF over directional signals (FTS hits + file affinity + semantic).
-  // Without at least one directional match the candidate scores zero —
-  // pinned/use_count alone never lift unrelated memories over the threshold.
+  // RRF over directional signals (FTS hits + file affinity + semantic rank)
+  // PLUS a magnitude term from the raw cosine. RRF alone gives ~0.016 per
+  // signal — far smaller than recency penalty / pinned bonus, so a strong
+  // semantic match would lose to a recently-used unrelated row. The cosine
+  // term scales with actual similarity (capped at 1) so high-quality matches
+  // dominate the bonus.
   let directional = 0;
   if (signals.fts_unicode !== null) directional += 1 / (RRF_K + signals.fts_unicode);
   if (signals.fts_trigram !== null) directional += 1 / (RRF_K + signals.fts_trigram);
@@ -293,7 +298,9 @@ function combineScore(signals: MemoryRecallSignals): number {
   if (signals.semantic_rank !== null) directional += 1 / (RRF_K + signals.semantic_rank);
   if (directional === 0) return 0;
 
-  const bonus = signals.use_count + signals.recency + signals.blast_radius + signals.pinned;
+  const semanticMagnitude = signals.semantic !== null ? 0.5 * signals.semantic : 0;
+  const bonus =
+    signals.use_count + signals.recency + signals.blast_radius + signals.pinned + semanticMagnitude;
   return directional + bonus;
 }
 function isAdapterArray(v: DbLike | readonly DbScopeAdapter[]): v is readonly DbScopeAdapter[] {
@@ -319,7 +326,7 @@ function collectSemanticHits(
   db: DbLike,
   query: string,
   limit = 20,
-  threshold = 0.25,
+  threshold = 0.12,
 ): Array<{ id: string; weight: number }> {
   if (!query || !db.listEmbeddings) return [];
   const qVec = embed(memoryEmbedSource(query, "", []));
