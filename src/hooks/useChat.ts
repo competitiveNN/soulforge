@@ -1853,17 +1853,16 @@ export function useChat({
 
       // Stream stall watchdog — hoisted so catch/finally can access.
       // Initialized after stream starts; no-ops if stream never starts.
-      const STALL_MAX_RETRIES = resolveRetrySettings(effectiveConfig.retry).maxRetries;
+      const { maxRetries: MAX_TRANSIENT_RETRIES, baseDelayMs: RETRY_BASE_DELAY_MS } =
+        resolveRetrySettings(effectiveConfig.retry);
+      const STALL_MAX_RETRIES = MAX_TRANSIENT_RETRIES;
       let stallWatchdog: ReturnType<typeof setInterval> | null = null;
       let unsubStallWatch1: (() => void) | null = null;
       let unsubStallWatch2: (() => void) | null = null;
       let unsubStallWatch3: (() => void) | null = null;
-      let stallTriggered = false; // only true when the watchdog itself fires
-      // Resolve retry settings once at handleSubmit scope so they're accessible
-      // in both the retry loop AND the outer catch block for streaming errors.
-      const { maxRetries: MAX_TRANSIENT_RETRIES, baseDelayMs: RETRY_BASE_DELAY_MS } =
-        resolveRetrySettings(effectiveConfig.retry);
+
       let streamRetryCount = 0; // local retry counter (not a ref)
+      let stallTriggered = false; // set to true when the watchdog fires abort
       // Model fallback: per-model fallback chains
       // Format: Record<modelId, fallbackArray>
       const raw = effectiveConfig.modelFallback;
@@ -1886,6 +1885,12 @@ export function useChat({
 
       const responseStartedAt = Date.now();
 
+      // Hoisted so the fallback swap in the catch block can rebuild them
+      // on the next iteration when activeModelRef.current changes.
+      let modelId: string;
+      let model: ReturnType<typeof resolveModel>;
+      let providerOptionsResult: Awaited<ReturnType<typeof buildProviderOptions>> | undefined;
+
       for (;;) {
         // Reset state for retry
         userAbortedRef.current = false;
@@ -1900,8 +1905,8 @@ export function useChat({
 
         try {
           setIsLoading(true);
-          const modelId = activeModelRef.current;
-          const model = resolveModel(modelId);
+          modelId = activeModelRef.current;
+          model = resolveModel(modelId);
 
           // Resolve subagent models from task router
           // spark/ember are primary; coding/exploration/trivial are legacy config fallbacks
@@ -1935,11 +1940,12 @@ export function useChat({
           const effectiveWebSearchModel = webSearchEnabled ? webSearchModel : undefined;
 
           // Build providerOptions (thinking, effort, context management)
+          providerOptionsResult = await buildProviderOptions(modelId, effectiveConfig);
           const {
             providerOptions,
             headers,
             contextWindow: fetchedCtxWindow,
-          } = await buildProviderOptions(modelId, effectiveConfig);
+          } = providerOptionsResult;
           // Propagate accurate context window from provider metadata (authoritative)
           if (fetchedCtxWindow > 0) {
             const prev = pinnedContextWindow.current.get(modelId) ?? 0;
@@ -3114,7 +3120,7 @@ let stallAbortedAt = 0;
           const isAbort = abortController.signal.aborted;
           const msg = err instanceof Error ? err.message : String(err);
           const isTransient =
-            /overloaded|529|429|403|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection|enginecore/i.test(
+            /overloaded|529|429|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection|enginecore/i.test(
               msg,
             );
           const isStallRetry =
@@ -3242,13 +3248,10 @@ let stallAbortedAt = 0;
             if (userAbortedRef.current) break;
             if (fallbackIndex < fallbackModels.length - 1) {
               fallbackIndex++;
-              const nextModel = fallbackModels[fallbackIndex];
-              if (!nextModel || nextModel.trim().length === 0) {
-                // Skip invalid entries and try next
-                continue;
-              }
+              const nextModel = fallbackModels[fallbackIndex] as string;
               activeModelRef.current = nextModel;
               streamRetryCount = 0; // Reset retry count for the new model
+              setActiveModel(nextModel);
               setMessages((prev) => [
                 ...prev,
                 {
@@ -3266,6 +3269,7 @@ let stallAbortedAt = 0;
                 // Escalate: stop retrying and let the error propagate
                 throw new Error(
                   `Exhausted ${MAX_CYCLES} cycles of model fallbacks. Last error: ${msg}`,
+                  { cause: err },
                 );
               }
               // Cycle back to primary model
