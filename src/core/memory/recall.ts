@@ -40,6 +40,7 @@ export interface DbScopeAdapter {
 interface IntelLike {
   getFileIdByPath(relPath: string): Promise<number | null>;
   getFileBlastRadiusById(id: number): Promise<number>;
+  getFileCoChanges?(relPath: string): Promise<Array<{ path: string; count: number }>>;
 }
 
 const DEFAULT_LIMIT = 3;
@@ -87,9 +88,22 @@ export class MemoryRecall {
     const queryVec = await this.resolveQueryVector(query);
 
     const editedFileIds = await this.resolveEditedFileIds(editedFiles);
+    const coChangePaths = await this.resolveCoChangePaths(editedFiles);
+    const coChangeFileIds =
+      coChangePaths.length > 0 ? await this.resolveEditedFileIds(coChangePaths) : [];
 
     const perScope = await Promise.all(
-      filtered.map((s) => this.gatherScope(s, query, queryVec, editedFiles, editedFileIds)),
+      filtered.map((s) =>
+        this.gatherScope(
+          s,
+          query,
+          queryVec,
+          editedFiles,
+          editedFileIds,
+          coChangePaths,
+          coChangeFileIds,
+        ),
+      ),
     );
 
     const blastCache = new Map<number, number>();
@@ -127,6 +141,7 @@ export class MemoryRecall {
             unicodeRank: sc.unicodeRank.get(record.id) ?? null,
             trigramRank: sc.trigramRank.get(record.id) ?? null,
             fileAffinityHit: sc.fileAffinitySet.has(record.id),
+            coChangeAffinityHit: sc.coChangeAffinitySet.has(record.id),
             blastRadius: radius,
             semantic: sc.semanticScore.get(record.id) ?? null,
             semanticRank: sc.semanticRank.get(record.id) ?? null,
@@ -200,12 +215,15 @@ export class MemoryRecall {
     queryVec: { vec: Float32Array; model: string } | null,
     editedFiles: string[],
     editedFileIds: number[],
+    coChangePaths: string[] = [],
+    coChangeFileIds: number[] = [],
   ): Promise<{
     scope: import("./types.js").MemoryScope;
     records: MemoryRecord[];
     unicodeRank: Map<string, number>;
     trigramRank: Map<string, number>;
     fileAffinitySet: Set<string>;
+    coChangeAffinitySet: Set<string>;
     fileIdsByMemory: Map<string, number[]>;
     semanticScore: Map<string, number>;
     semanticRank: Map<string, number>;
@@ -218,6 +236,18 @@ export class MemoryRecall {
     }
 
     const fileAffinityIds = collectFileAffinity(db, editedFiles, editedFileIds);
+    const directAffinitySet = new Set(fileAffinityIds);
+
+    // Co-change neighbors → secondary file affinity. Memories tied to a
+    // co-change partner of the edited file enter the candidate pool but
+    // never override direct hits.
+    const coChangeIds =
+      coChangePaths.length > 0 || coChangeFileIds.length > 0
+        ? collectFileAffinity(db, coChangePaths, coChangeFileIds).filter(
+            (id) => !directAffinitySet.has(id),
+          )
+        : [];
+    const coChangeAffinitySet = new Set(coChangeIds);
 
     const semanticHits = collectSemanticHits(db, queryVec);
     const semanticScore = new Map<string, number>();
@@ -228,6 +258,7 @@ export class MemoryRecall {
       unicodeHits.length > 0 ||
       trigramHits.length > 0 ||
       fileAffinityIds.length > 0 ||
+      coChangeIds.length > 0 ||
       semanticHits.length > 0;
     const usageIds = hasDirectionalSignal ? [] : db.topByUsage(USAGE_CANDIDATE_LIMIT);
 
@@ -235,6 +266,7 @@ export class MemoryRecall {
     for (const h of unicodeHits) candidateIds.add(h.id);
     for (const h of trigramHits) candidateIds.add(h.id);
     for (const id of fileAffinityIds) candidateIds.add(id);
+    for (const id of coChangeIds) candidateIds.add(id);
     for (const h of semanticHits) candidateIds.add(h.id);
     for (const id of usageIds) candidateIds.add(id);
 
@@ -245,6 +277,7 @@ export class MemoryRecall {
         unicodeRank: new Map(),
         trigramRank: new Map(),
         fileAffinitySet: new Set(),
+        coChangeAffinitySet: new Set(),
         fileIdsByMemory: new Map(),
         semanticScore: new Map(),
         semanticRank: new Map(),
@@ -262,11 +295,41 @@ export class MemoryRecall {
       records,
       unicodeRank: rankMap(unicodeHits.map((h) => h.id)),
       trigramRank: rankMap(trigramHits.map((h) => h.id)),
-      fileAffinitySet: new Set(fileAffinityIds),
+      fileAffinitySet: directAffinitySet,
+      coChangeAffinitySet,
       fileIdsByMemory,
       semanticScore,
       semanticRank,
     };
+  }
+
+  /**
+   * Expand edited files through Soul Map's git co-change graph.
+   * Editing `auth/routes.ts` returns `auth/middleware.ts` etc. — files that
+   * historically change together. Cap at 2 neighbors per file, 6 total, so
+   * a single hot file can't dominate. Memory tied to a co-change neighbor
+   * still gets a file-affinity boost, but weighted lower than direct hits.
+   */
+  private async resolveCoChangePaths(editedFiles: string[]): Promise<string[]> {
+    const intel = this.intel;
+    if (!intel?.getFileCoChanges || editedFiles.length === 0) return [];
+    const seen = new Set(editedFiles);
+    const out: string[] = [];
+    for (const path of editedFiles) {
+      if (out.length >= 6) break;
+      try {
+        const neighbors = await intel.getFileCoChanges(path);
+        let added = 0;
+        for (const n of neighbors) {
+          if (added >= 2 || out.length >= 6) break;
+          if (seen.has(n.path)) continue;
+          seen.add(n.path);
+          out.push(n.path);
+          added++;
+        }
+      } catch {}
+    }
+    return out;
   }
 }
 
@@ -284,6 +347,7 @@ interface SignalInputs {
   unicodeRank: number | null;
   trigramRank: number | null;
   fileAffinityHit: boolean;
+  coChangeAffinityHit: boolean;
   blastRadius: number;
   semantic: number | null;
   semanticRank: number | null;
@@ -304,6 +368,7 @@ function computeSignals(input: SignalInputs): MemoryRecallSignals {
     recency: -0.05 * (1 - Math.exp(-ageDays / 14)),
     use_count: 0.05 * Math.log(input.record.use_count + 1),
     file_affinity: input.fileAffinityHit ? 1 : 0,
+    cochange_affinity: input.coChangeAffinityHit && !input.fileAffinityHit ? 1 : 0,
     blast_radius: 0.05 * Math.log(input.blastRadius + 1),
     pinned: input.record.pinned ? 0.1 : 0,
     semantic: input.semantic,
@@ -321,6 +386,9 @@ function combineScore(signals: MemoryRecallSignals): number {
   if (signals.fts_unicode !== null) directional += 1 / (RRF_K + signals.fts_unicode);
   if (signals.fts_trigram !== null) directional += 1 / (RRF_K + signals.fts_trigram);
   if (signals.file_affinity > 0) directional += 1 / (RRF_K + 1);
+  // Co-change neighbor: ranked behind direct hits but still directional.
+  // RRF rank=5 → ~3× weaker than a direct file hit, which is what we want.
+  if (signals.cochange_affinity > 0) directional += 1 / (RRF_K + 5);
   if (signals.semantic_rank !== null) directional += 2 / (RRF_K + signals.semantic_rank);
   if (directional === 0) return 0;
 

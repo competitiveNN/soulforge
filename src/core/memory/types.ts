@@ -45,6 +45,10 @@ export interface MemoryRecallSignals {
   recency: number;
   use_count: number;
   file_affinity: number;
+  /** Co-change neighbor affinity (0 or 1). Set when memory's file_paths
+   *  intersects the git co-change neighbors of currently-edited files.
+   *  Soft signal — bounded weight, can't dominate direct file_affinity. */
+  cochange_affinity: number;
   blast_radius: number;
   pinned: number;
   /** Cosine similarity in [0,1]; null when no embedding/query. */
@@ -79,3 +83,24 @@ export function MEMORY_RECALL_ACK(count: number): string {
 
 /** Regex that matches MEMORY_RECALL_ACK output of any count. */
 export const MEMORY_RECALL_ACK_PATTERN = /^Acknowledged — \d+ relevant memor(?:y|ies) surfaced\.$/;
+/**
+ * Human-readable badge of which recall signals fired for a memory.
+ * Used in <recalled_memories> injection so the agent (and the user, via
+ * tool-display formatting) can see WHY a memory was surfaced. Order is
+ * stable: strongest signal first. Empty string when nothing fired (the
+ * memory came in via usage-fallback only).
+ */
+export function describeRecallSignals(signals: MemoryRecallSignals): string {
+  const parts: string[] = [];
+  if (signals.file_affinity > 0) parts.push("file");
+  if (signals.cochange_affinity > 0) parts.push("co-change");
+  if (signals.semantic !== null && signals.semantic >= 0.4) {
+    parts.push(`sem ${signals.semantic.toFixed(2)}`);
+  } else if (signals.semantic_rank !== null) {
+    parts.push("sem");
+  }
+  if (signals.fts_unicode !== null) parts.push("fts");
+  else if (signals.fts_trigram !== null) parts.push("trigram");
+  if (signals.pinned > 0) parts.push("★");
+  return parts.join(", ");
+}
