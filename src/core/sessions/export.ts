@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ChatMessage, ToolCall } from "../../types/index.js";
+import { writeLinuxClipboard } from "../../utils/clipboard.js";
 
 function formatTimestamp(ts: number): string {
   const d = new Date(ts);
@@ -165,18 +166,13 @@ export function exportToClipboard(messages: ChatMessage[], title?: string): Clip
   const label = title ?? "Chat Export";
   const content = exportToMarkdown(messages, label);
 
-  // Write to system clipboard via pbcopy/xclip/xsel
   const platform = process.platform;
-  const cmd =
-    platform === "darwin"
-      ? ["pbcopy"]
-      : platform === "win32"
-        ? ["clip"]
-        : ["xclip", "-selection", "clipboard"];
-
-  const proc = Bun.spawnSync(cmd, { stdin: new TextEncoder().encode(content) });
-  if (proc.exitCode !== 0) {
-    throw new Error(`Failed to copy to clipboard: ${proc.stderr?.toString() ?? "unknown error"}`);
+  if (platform === "darwin") {
+    Bun.spawnSync(["pbcopy"], { stdin: new TextEncoder().encode(content) });
+  } else if (platform === "win32") {
+    Bun.spawnSync(["clip"], { stdin: new TextEncoder().encode(content) });
+  } else {
+    writeLinuxClipboard(content);
   }
 
   const visible = messages.filter((m) => m.role !== "system" || m.showInChat).length;

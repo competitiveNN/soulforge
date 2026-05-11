@@ -1,13 +1,54 @@
-import { exec, spawn } from "node:child_process";
+import { exec, type SpawnOptions, spawn } from "node:child_process";
 import { readFileSync, unlinkSync } from "node:fs";
 
+function trySpawn(cmd: string, args: string[], text: string): boolean {
+  try {
+    const opts: SpawnOptions = { stdio: ["pipe", "ignore", "ignore"] };
+    const proc = spawn(cmd, args, opts);
+    proc.on("error", () => {});
+    if (!proc.stdin) return false;
+    proc.stdin.on("error", () => {});
+    proc.stdin.write(text);
+    proc.stdin.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Write text to the Linux clipboard. Tries wl-copy first when running under
+ * Wayland, then xclip, then xsel. Returns true if a backend was spawned.
+ */
+export function writeLinuxClipboard(text: string): boolean {
+  const wayland = !!process.env.WAYLAND_DISPLAY;
+  const backends: [string, string[]][] = wayland
+    ? [
+        ["wl-copy", []],
+        ["xclip", ["-selection", "clipboard"]],
+        ["xsel", ["-b", "-i"]],
+      ]
+    : [
+        ["xclip", ["-selection", "clipboard"]],
+        ["wl-copy", []],
+        ["xsel", ["-b", "-i"]],
+      ];
+  for (const [cmd, args] of backends) {
+    if (trySpawn(cmd, args, text)) return true;
+  }
+  return false;
+}
+
 export function copyToClipboard(text: string): void {
-  const isDarwin = process.platform === "darwin";
-  const cmd = isDarwin ? "pbcopy" : "xclip";
-  const args = isDarwin ? [] : ["-selection", "clipboard"];
-  const proc = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
-  proc.stdin.write(text);
-  proc.stdin.end();
+  if (process.platform === "darwin") {
+    trySpawn("pbcopy", [], text);
+    return;
+  }
+  if (process.platform === "win32") {
+    trySpawn("clip", [], text);
+    return;
+  }
+  writeLinuxClipboard(text);
 }
 
 // ── Clipboard image reading ──

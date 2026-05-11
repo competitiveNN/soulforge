@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { type Selection, TextAttributes } from "@opentui/core";
 import { useRenderer, useTerminalDimensions } from "@opentui/react";
@@ -56,6 +55,7 @@ import { useToolsStore } from "../stores/tools.js";
 import { type ModalName, selectIsAnyModalOpen, useUIStore } from "../stores/ui.js";
 import { useVersionStore } from "../stores/version.js";
 import type { AppConfig, ChatMessage, EditorIntegration, TaskRouter } from "../types/index.js";
+import { copyToClipboard as nativeCopyToClipboard } from "../utils/clipboard.js";
 import { BrandTag } from "./layout/BrandTag.js";
 import { ContextBar } from "./layout/ContextBar.js";
 import { EditorPanel } from "./layout/EditorPanel.js";
@@ -310,14 +310,6 @@ function CheckpointLegend({ tabId, fallbackSpacer }: { tabId: string; fallbackSp
   );
 }
 
-function nativeCopy(text: string): void {
-  const cmd = process.platform === "darwin" ? "pbcopy" : "xclip";
-  const args = process.platform === "darwin" ? [] : ["-selection", "clipboard"];
-  const proc = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
-  proc.stdin.write(text);
-  proc.stdin.end();
-}
-
 export function App({
   config,
   projectConfig,
@@ -363,7 +355,7 @@ export function App({
   const copyToClipboard = useCallback(
     (text: string) => {
       if (!renderer.copyToClipboardOSC52(text)) {
-        nativeCopy(text);
+        nativeCopyToClipboard(text);
       }
     },
     [renderer],

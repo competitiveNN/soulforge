@@ -81,6 +81,9 @@ export function useGlobalKeyboard({
         const text = sel.getSelectedText();
         if (text) return consume(() => copyToClipboard(text));
       }
+      // Ctrl+Shift+C is copy-only (Konsole/Wayland forwards it as bare Ctrl+C
+      // with shift:true). Never exit on shift.
+      if (evt.shift) return;
       if (evt.ctrl && focusMode === "chat") return;
       if (evt.ctrl) handleExit();
       return;

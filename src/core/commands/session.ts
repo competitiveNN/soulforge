@@ -102,6 +102,13 @@ async function handleExport(input: string, ctx: CommandContext): Promise<void> {
   }
 
   if (arg === "clipboard" || arg === "clip") {
+    const visibleCount = ctx.chat.messages.filter(
+      (m) => m.role !== "system" || m.showInChat,
+    ).length;
+    if (visibleCount === 0) {
+      sysMsg(ctx, "Nothing to export — chat is empty");
+      return;
+    }
     const { exportToClipboard } = await import("../sessions/export.js");
     const tabLabel = ctx.tabMgr.activeTab?.label ?? "chat";
     const result = exportToClipboard(ctx.chat.messages, tabLabel);
