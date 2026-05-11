@@ -147,45 +147,48 @@ export function RouterSettings({
   const popupH = Math.min(40, Math.max(26, th - 4));
   const contentW = popupW - 4;
 
-  // Flatten sections into navigable rows: [section header, slot, slot, …]
+  // Flatten sections into navigable rows: [section header, slot, …, picker, …]
   type Row =
     | { kind: "header"; section: SectionDef }
-    | { kind: "slot"; section: SectionDef; def: SlotDef };
+    | { kind: "slot"; section: SectionDef; def: SlotDef }
+    | { kind: "picker"; section: SectionDef; def: PickerDef };
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
     for (const s of SECTIONS) {
       out.push({ kind: "header", section: s });
       for (const d of s.defs) {
         if (d.kind === "slot") out.push({ kind: "slot", section: s, def: d });
+        else out.push({ kind: "picker", section: s, def: d });
       }
     }
     return out;
   }, []);
 
-  // Find indices of slot rows so cursor only lands on slots.
-  const slotIndices = useMemo(
-    () => rows.map((r, i) => (r.kind === "slot" ? i : -1)).filter((i) => i >= 0),
+  // Find indices of selectable rows (slots + pickers) so cursor skips headers.
+  const selectableIndices = useMemo(
+    () =>
+      rows.map((r, i) => (r.kind === "slot" || r.kind === "picker" ? i : -1)).filter((i) => i >= 0),
     [rows],
   );
 
   const moveItem = (dir: 1 | -1) => {
-    if (slotIndices.length === 0) return;
-    const cur = slotIndices.indexOf(cursor);
+    if (selectableIndices.length === 0) return;
+    const cur = selectableIndices.indexOf(cursor);
     const base = cur < 0 ? 0 : cur;
-    const nextPos = (base + dir + slotIndices.length) % slotIndices.length;
-    setCursor(slotIndices[nextPos] ?? slotIndices[0] ?? 0);
+    const nextPos = (base + dir + selectableIndices.length) % selectableIndices.length;
+    setCursor(selectableIndices[nextPos] ?? selectableIndices[0] ?? 0);
   };
 
-  // Initialize cursor on first slot
+  // Initialize cursor on first selectable row
   useMemo(() => {
-    if (cursor === 0 && slotIndices.length > 0 && slotIndices[0] !== 0) {
-      setCursor(slotIndices[0] ?? 0);
+    if (cursor === 0 && selectableIndices.length > 0 && selectableIndices[0] !== 0) {
+      setCursor(selectableIndices[0] ?? 0);
     }
-  }, [cursor, slotIndices]);
+  }, [cursor, selectableIndices]);
 
   const selectedRow = rows[cursor];
-  const selectedDef = selectedRow?.kind === "slot" ? selectedRow.def : null;
-  const pickerDefs = useMemo(() => ALL_DEFS.filter((d): d is PickerDef => d.kind === "picker"), []);
+  const selectedSlot = selectedRow?.kind === "slot" ? selectedRow.def : null;
+  const selectedPicker = selectedRow?.kind === "picker" ? selectedRow.def : null;
 
   useKeyboard((evt) => {
     if (!visible) return;
@@ -204,17 +207,26 @@ export function RouterSettings({
       return;
     }
     if (evt.name === "return") {
-      if (selectedDef) onPickSlot(selectedDef.key);
+      if (selectedSlot) onPickSlot(selectedSlot.key);
       return;
     }
     if (evt.name === "d" || evt.name === "delete" || evt.name === "backspace") {
-      if (selectedDef) onClearSlot(selectedDef.key);
+      if (selectedSlot) onClearSlot(selectedSlot.key);
       return;
     }
     if (evt.name === "left" || evt.name === "right") {
-      // No picker selected (slots only) — left/right cycles config scope.
-      // Concurrency picker is editable via its own SegmentedControl below.
-      void onPickerChange;
+      if (selectedPicker) {
+        const cur = router?.[selectedPicker.key];
+        const curVal = typeof cur === "number" ? cur : selectedPicker.defaultValue;
+        const opts = selectedPicker.options;
+        const i = opts.indexOf(curVal);
+        const base = i < 0 ? 0 : i;
+        const nextIdx =
+          evt.name === "left" ? (base - 1 + opts.length) % opts.length : (base + 1) % opts.length;
+        const next = opts[nextIdx];
+        if (typeof next === "number" && next !== curVal) onPickerChange(selectedPicker.key, next);
+        return;
+      }
       const sIdx = CONFIG_SCOPES.indexOf(scope);
       const next =
         evt.name === "left"
@@ -256,7 +268,7 @@ export function RouterSettings({
         { key: "↑↓", label: "nav" },
         { key: "Enter", label: "set" },
         { key: "d", label: "reset" },
-        { key: "←→", label: "scope" },
+        { key: "←→", label: selectedPicker ? "adjust" : "scope" },
         { key: "Esc", label: "close" },
       ]}
     >
@@ -279,6 +291,21 @@ export function RouterSettings({
               );
             }
             const isSelected = idx === cursor;
+            if (row.kind === "picker") {
+              const cur = router?.[row.def.key];
+              const num = typeof cur === "number" ? cur : row.def.defaultValue;
+              return (
+                <SegmentedControl
+                  // biome-ignore lint/suspicious/noArrayIndexKey: stable row layout
+                  key={`p-${idx}`}
+                  label={row.def.label}
+                  labelWidth={labelCol}
+                  options={row.def.options.map((o) => ({ value: o, label: String(o) }))}
+                  value={num}
+                  focused={isSelected}
+                />
+              );
+            }
             const rowBg = isSelected ? t.bgPopupHighlight : t.bgPopup;
             const raw = router?.[row.def.key] ?? null;
             const modelId = typeof raw === "string" ? raw : null;
@@ -317,20 +344,6 @@ export function RouterSettings({
             );
           })}
         </box>
-        <VSpacer />
-        {pickerDefs.map((def) => {
-          const cur = router?.[def.key];
-          const num = typeof cur === "number" ? cur : def.defaultValue;
-          return (
-            <SegmentedControl
-              key={def.key}
-              label={def.label}
-              labelWidth={14}
-              options={def.options.map((o) => ({ value: o, label: String(o) }))}
-              value={num}
-            />
-          );
-        })}
         <VSpacer />
         <SegmentedControl
           label="Scope"
