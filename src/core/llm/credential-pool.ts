@@ -26,6 +26,13 @@ import { getAllProviders, getProvider } from "./providers/index.js";
 const keyIndexCounters = new Map<string, number>();
 
 /**
+ * Track the last key resolution for each provider that called getPooledApiKey.
+ * Stores keyIndex + keyCount so error messages can say "key #2 of 3" without
+ * exposing the actual key material.
+ */
+const lastKeyResolution = new Map<string, { keyIndex: number; keyCount: number; envVar: string }>();
+
+/**
  * Pick the next key index using round-robin for the given provider.
  * Returns the index and advances the counter.
  */
@@ -45,6 +52,7 @@ function resolveKeyRotating(envVar: string, providerId: string): string | undefi
   const keys = getAllKeys(envVar);
   if (keys.length === 0) return undefined;
   const idx = nextKeyIndex(providerId, keys.length);
+  lastKeyResolution.set(providerId, { keyIndex: idx, keyCount: keys.length, envVar });
   return keys[idx];
 }
 
@@ -146,4 +154,14 @@ export function getCredentialDiagnostics(providerId: string): {
     pooledFrom,
     effectiveKeySet,
   };
+}
+
+/**
+ * Get the last key resolution info for a provider, for error logging.
+ * Returns which key index was used out of how many total keys.
+ */
+export function getLastKeyResolution(
+  providerId: string,
+): { keyIndex: number; keyCount: number; envVar: string } | undefined {
+  return lastKeyResolution.get(providerId);
 }

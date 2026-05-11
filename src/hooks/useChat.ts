@@ -35,7 +35,11 @@ import {
   getModelContextWindow,
   getShortModelLabel,
 } from "../core/llm/models.js";
-import { getActiveProviderId, resolveModel } from "../core/llm/provider.js";
+import {
+  getActiveProviderId,
+  getProviderIdFromModelId,
+  resolveModel,
+} from "../core/llm/provider.js";
 import {
   buildProviderOptions,
   degradeProviderOptions,
@@ -43,6 +47,7 @@ import {
   supportsTemperature,
 } from "../core/llm/provider-options.js";
 import { resolveTaskModel } from "../core/llm/task-router.js";
+import { getLastKeyResolution } from "../core/llm/credential-pool.js";
 import { onCompaction, writeDiary } from "../core/mcp/mempalace.js";
 import { bounceProxy, proxyHealthProbe } from "../core/proxy/lifecycle.js";
 import { resolveRetrySettings } from "../core/retry/settings.js";
@@ -3355,6 +3360,7 @@ export function useChat({
           }
           const isTransientStream =
             /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(rawMsg);
+          const is403 = /403|forbidden/i.test(rawChain);
           const errObj =
             err != null && typeof err === "object" ? (err as Record<string, unknown>) : null;
           const apiBody =
@@ -3365,9 +3371,29 @@ export function useChat({
             errObj?.data != null ? JSON.stringify(errObj.data).slice(0, 500) : undefined;
           const detail = apiBody?.slice(0, 500) ?? apiData;
           const enrichedMsg = detail ? `${rawMsg} · ${detail}` : rawMsg;
+
+          // Enrich 403 errors with diagnostic context (model, key index, API URL)
+          let authDebugContext = "";
+          if (is403) {
+            const modelId = activeModelRef.current;
+            const providerId = getProviderIdFromModelId(modelId);
+            const keyResolution = getLastKeyResolution(providerId);
+            let ctxParts: string[] = [];
+            ctxParts.push(`model: ${modelId}`);
+            if (keyResolution) {
+              ctxParts.push(`api-key: #${keyResolution.keyIndex + 1} of ${keyResolution.keyCount}`);
+              ctxParts.push(`key-source: ${keyResolution.envVar}`);
+            }
+            const url = errObj?.url as string | undefined;
+            if (url) {
+              ctxParts.push(`api-url: ${url}`);
+            }
+            authDebugContext = ` [${ctxParts.join(", ")}]`;
+          }
+
           const errorMsg = isTransientStream
             ? `Provider returned a transient error (${rawMsg.slice(0, 120)}). Please retry.`
-            : enrichedMsg;
+            : enrichedMsg + authDebugContext;
           const errorStack = !isTransientStream && err instanceof Error ? err.stack : undefined;
           // Mark in-flight tool calls as interrupted so they don't show stuck spinners
           if (isAbort) {
