@@ -409,13 +409,15 @@ export interface AppConfig {
 }
 
 export interface RetryConfig {
-  /** Max retry attempts for transient errors (429, 529, 503, timeouts, overloaded). Default: 3. Range: 1–10. */
-  maxAttempts?: number;
-  /** Max retry attempts when the stream stalls (no data for the watchdog timeout). Default: 3. Range: 1–10. */
-  maxStallRetries?: number;
-  /** Base delay in ms before the first retry. Doubles each attempt + jitter. Default: 2000 (agents), 1000 (chat). Range: 250–60000. */
-  baseDelayMs?: number;
-}
+   /** Max retry attempts for transient errors (429, 529, 503, timeouts, overloaded). Default: 3. Range: 1–10. */
+   maxAttempts?: number;
+   /** Max retry attempts when the stream stalls (no data for the watchdog timeout). Default: 3. Range: 1–10. */
+   maxStallRetries?: number;
+   /** Max retry attempts for transient errors before falling back. Default: uses maxAttempts. Range: 1–10. */
+   maxTransientRetries?: number;
+   /** Base delay in ms before the first retry. Doubles each attempt + jitter. Default: 2000 (agents), 1000 (chat). Range: 250–60000. */
+   baseDelayMs?: number;
+ }
 
 export interface WatchdogTimeouts {
   /** Timeout in ms before first content chunk. Default: 180000 (180s). Range: 30000-600000. */

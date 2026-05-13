@@ -1871,10 +1871,10 @@ export function useChat({
       // Steering messages are now flushed immediately in drainSteering —
       // no longer accumulated and appended at the end.
 
-      // Stream stall watchdog — hoisted so catch/finally can access.
-      // Initialized after stream starts; no-ops if stream never starts.
-const {
-         maxRetries: MAX_TRANSIENT_RETRIES,
+// Stream stall watchdog — hoisted so catch/finally can access.
+       // Initialized after stream starts; no-ops if stream never starts.
+       const {
+         maxTransientRetries: MAX_TRANSIENT_RETRIES,
          maxStallRetries: MAX_STALL_RETRIES,
          baseDelayMs: RETRY_BASE_DELAY_MS,
        } = resolveRetrySettings(effectiveConfig.retry);
@@ -1885,15 +1885,15 @@ const {
 
       let streamRetryCount = 0; // local retry counter (not a ref)
       let stallTriggered = false; // set to true when the watchdog fires abort
-      // Model fallback: per-model fallback chains
-      // Format: Record<modelId, fallbackArray>
-      const raw = effectiveConfig.modelFallback;
-      let fallbackModels: string[] = [];
-      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-        fallbackModels = ((raw as Record<string, string[]>)[activeModelRef.current] ?? []).filter(
-          (m) => m && m.trim().length > 0,
-        );
-      }
+// Model fallback: per-model fallback chains
+       // Format: Record<modelId, fallbackArray>
+       const raw = effectiveConfig.modelFallback;
+       let fallbackModels: string[] = [];
+       if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+         fallbackModels = ((raw as Record<string, string[]>)[activeModelRef.current] ?? []).filter(
+           (m) => m && m.trim().length > 0,
+         ).map((m) => m.trim());
+       }
       // Legacy string[] format is no longer supported - use Record format
       let fallbackIndex = -1; // -1 = primary model, 0+ = index into fallbackModels
       const primaryModelId = activeModelRef.current; // Store for cycling back
@@ -3317,11 +3317,14 @@ let stallAbortedAt = 0;
                   { cause: err },
                 );
               }
-              // Cycle back to primary model
-              fallbackIndex = -1;
-              activeModelRef.current = primaryModelId;
-              streamRetryCount = 0;
-              setMessages((prev) => [
+               // Cycle back to primary model
+               fallbackIndex = -1;
+               activeModelRef.current = primaryModelId;
+               streamRetryCount = 0;
+               notifyProviderSwitch(primaryModelId);
+               setActiveModel(primaryModelId);
+               onModelChange?.(primaryModelId);
+               setMessages((prev) => [
                 ...prev,
                 {
                   id: crypto.randomUUID(),
@@ -3437,17 +3440,16 @@ const rawChain = (err as any).cause?.message ?? String(err);
               event: "StopFailure",
               toolInput: { error: rawMsg },
               sessionId: sessionIdRef.current,
-              cwd,
-            }).catch(() => {});
-          }
-          const isTransientStream =
-            /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(rawMsg);
-          const apiBody =
-            errObj && typeof errObj.responseBody === "string" && errObj.responseBody.length > 0
-              ? errObj.responseBody
-              : undefined;
-          const apiData =
-            errObj?.data != null ? JSON.stringify(errObj.data).slice(0, 500) : undefined;
+}).catch(() => {});
+           }
+           const isTransientStream =
+             /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(rawMsg || "");
+           const apiBody =
+             errObj && typeof errObj.responseBody === "string" && errObj.responseBody.length > 0
+               ? errObj.responseBody
+               : undefined;
+const apiData =
+             errObj?.data != null ? JSON.stringify(errObj.data).slice(0, 500) : undefined;
           const detail = apiBody?.slice(0, 500) ?? apiData;
           const enrichedMsg = detail ? `${rawMsg} · ${detail}` : rawMsg;
 

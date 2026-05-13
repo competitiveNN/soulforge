@@ -10,10 +10,13 @@ export const MIN_BASE_DELAY_MS = 250;
 export const MAX_BASE_DELAY_MS = 60_000;
 
 export interface ResolvedRetrySettings {
-   maxRetries: number;
-   maxStallRetries: number;
-   baseDelayMs: number;
- }
+  maxRetries: number;
+  maxStallRetries: number;
+  maxTransientRetries: number;
+  baseDelayMs: number;
+}
+
+const DEFAULT_MAX_TRANSIENT_RETRIES = 3;
 
 /**
  * Pure, defensive resolver for user-supplied retry config.
@@ -27,29 +30,36 @@ export function resolveRetrySettings(
   const defaultBase = opts.agent ? DEFAULT_AGENT_BASE_DELAY_MS : DEFAULT_CHAT_BASE_DELAY_MS;
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
 
-const maxRetries = clampIntMin(
-     obj?.maxAttempts,
-     MIN_MAX_ATTEMPTS,
-     DEFAULT_MAX_RETRIES,
-     "retry.maxAttempts",
-   );
+  const maxRetries = clampIntMin(
+    obj?.maxAttempts,
+    MIN_MAX_ATTEMPTS,
+    DEFAULT_MAX_RETRIES,
+    "retry.maxAttempts",
+  );
 
-   const maxStallRetries = clampIntMin(
-     obj?.maxStallRetries,
-     MIN_MAX_ATTEMPTS,
-     DEFAULT_MAX_RETRIES,
-     "retry.maxStallRetries",
-   );
+  const maxStallRetries = clampIntMin(
+    obj?.maxStallRetries,
+    MIN_MAX_ATTEMPTS,
+    DEFAULT_MAX_RETRIES,
+    "retry.maxStallRetries",
+  );
 
-   const baseDelayMs = clampInt(
-     obj?.baseDelayMs,
-     MIN_BASE_DELAY_MS,
-     MAX_BASE_DELAY_MS,
-     defaultBase,
-     "retry.baseDelayMs",
-   );
+  const maxTransientRetries = clampIntMin(
+    obj?.maxTransientRetries,
+    MIN_MAX_ATTEMPTS,
+    DEFAULT_MAX_TRANSIENT_RETRIES,
+    "retry.maxTransientRetries",
+  );
 
-   return { maxRetries, maxStallRetries, baseDelayMs };
+  const baseDelayMs = clampInt(
+    obj?.baseDelayMs,
+    MIN_BASE_DELAY_MS,
+    MAX_BASE_DELAY_MS,
+    defaultBase,
+    "retry.baseDelayMs",
+  );
+
+  return { maxRetries, maxStallRetries, maxTransientRetries, baseDelayMs };
 }
 
 const warnedKeys = new Set<string>();
