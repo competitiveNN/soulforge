@@ -384,3 +384,6 @@ export async function start(opts: StartOptions): Promise<void> {
 
   opts.createRoot(r).render(<AppRoot opts={opts} />);
 }
+export function getActiveRenderer(): Awaited<ReturnType<typeof CreateCliRenderer>> | null {
+  return renderer;
+}

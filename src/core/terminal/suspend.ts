@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { getActiveRenderer } from "../../index.js";
 
 interface SuspendOpts {
   command: string;
@@ -7,19 +8,35 @@ interface SuspendOpts {
   noAltScreen?: boolean;
 }
 
-/**
- * Hand terminal control to an interactive process (e.g. lazygit).
- * Disables raw mode, enters alt screen, spawns with inherited stdio,
- * then restores on exit.
- */
 export function suspendAndRun(opts: SuspendOpts): Promise<{ exitCode: number | null }> {
   return new Promise((resolve) => {
-    // Leave raw mode so the child gets normal terminal input
+    // Get the active renderer (set in src/index.tsx) so we can suspend it.
+    // suspend() disables mouse tracking, kitty keyboard protocol, raw mode,
+    // and pauses the render loop — without this, lazygit's TTY input fights
+    // OpenTUI's input parser and the child appears frozen.
+    const renderer = (() => {
+      try {
+        return getActiveRenderer();
+      } catch {
+        return null;
+      }
+    })();
+
+    try {
+      renderer?.suspend();
+    } catch {}
+
+    // Belt-and-braces: even if renderer.suspend() leaves something raw,
+    // explicitly drop raw mode so the child gets cooked-mode input.
     if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
+      try {
+        process.stdin.setRawMode(false);
+      } catch {}
     }
 
-    // Enter alt screen buffer (unless disabled for non-TUI commands)
+    // Enter alt screen buffer (unless disabled for non-TUI commands).
+    // lazygit manages its own alt screen, so this is mostly for legacy
+    // callers that pass noAltScreen: true.
     if (!opts.noAltScreen) {
       process.stdout.write("\x1b[?1049h");
     }
@@ -30,29 +47,25 @@ export function suspendAndRun(opts: SuspendOpts): Promise<{ exitCode: number | n
       env: { ...process.env },
     });
 
-    proc.on("close", (code) => {
+    const restore = (code: number | null) => {
       if (!opts.noAltScreen) {
         process.stdout.write("\x1b[?1049l");
       }
-
-      // Re-enable raw mode for Ink
+      try {
+        renderer?.resume();
+      } catch {}
+      // resume() re-enables raw mode + kitty keyboard. Belt-and-braces
+      // in case the renderer is gone for some reason.
       if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
-        process.stdin.resume();
+        try {
+          process.stdin.setRawMode(true);
+          process.stdin.resume();
+        } catch {}
       }
-
       resolve({ exitCode: code });
-    });
+    };
 
-    proc.on("error", () => {
-      if (!opts.noAltScreen) {
-        process.stdout.write("\x1b[?1049l");
-      }
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
-        process.stdin.resume();
-      }
-      resolve({ exitCode: null });
-    });
+    proc.on("close", (code) => restore(code));
+    proc.on("error", () => restore(null));
   });
 }
