@@ -451,11 +451,12 @@ export function buildPrepareStep({
       }
     }
 
-    // Use the last step's input tokens as actual context size (not cumulative sum).
-    // Each step re-sends the full message history, so inputTokens reflects real context window usage.
-    const lastStep = steps.length > 0 ? steps[steps.length - 1] : undefined;
+// Use the last step's input tokens as actual context size (not cumulative sum).
+     // Each step re-sends the full message history, so inputTokens reflects real context window usage.
+     const lastStep = steps.length > 0 ? steps[steps.length - 1] : undefined;
+     const contextSize = lastStep?.usage?.inputTokens ?? 0;
 
-    // API export: dump full request data per step
+     // API export: dump full request data per step
     // Enable via /export api command or SOULFORGE_DEBUG_API=1 env var
     if (apiExportEnabled || process.env.SOULFORGE_DEBUG_API) {
       const msgs = result.messages ?? messages;
@@ -551,12 +552,15 @@ export function buildPrepareStep({
         mkdirSync(subDir, { recursive: true });
         const file = `${subDir}/step-${String(stepNumber).padStart(2, "0")}.json`;
         writeFileSync(file, json, "utf-8");
-      });
-    }
+});
+  }
 
-    const contextSize = lastStep?.usage.inputTokens ?? 0;
+// Early compaction trigger at 65% of context window from total messages.
+     // This forces text-only output one step before the existing 80% nudge,
+     // giving the caller a chance to compact before hard overflow.
+     // (earlyCompactThreshold and earlyCompact were removed as unused)
 
-    // Collect all hints as user message injects (not result.system) for cache stability.
+     // Collect all hints as user message injects (not result.system) for cache stability.
     // System prompt stays byte-identical across steps → prefix caching works.
     const hints: string[] = [];
 

@@ -21,6 +21,7 @@ import {
   getModeInstructions,
   type PromptBuilderOptions,
 } from "../prompts/index.js";
+import { getCachedInstructionsSize } from "../agents/forge.js";
 // buildForbiddenContext removed from system prompt — gates enforce at tool level
 import { emitFileEdited, onFileEdited, onFileRead } from "../tools/file-events.js";
 import { IntelligenceClient } from "../workers/intelligence-client.js";
@@ -416,6 +417,10 @@ export class ContextManager {
 
   setContextWindow(tokens: number): void {
     this.contextWindowTokens = tokens;
+  }
+
+  getContextWindow(): number {
+    return this.contextWindowTokens > 0 ? this.contextWindowTokens : DEFAULT_CONTEXT_WINDOW;
   }
 
   getContextPercent(): number {
@@ -1122,10 +1127,11 @@ export class ContextManager {
   getContextBreakdown(): { section: string; chars: number; active: boolean }[] {
     const sections: { section: string; chars: number; active: boolean }[] = [];
 
-    // Core + tools reference (always present)
+    // System prompt size — use actual cached size from forge if available, else estimate
+    const cachedSize = getCachedInstructionsSize(this);
     sections.push({
-      section: "Core + tool reference",
-      chars: 1800, // approximate: identity + all tool docs + guidelines
+      section: "System prompt + tools",
+      chars: cachedSize ?? 1800,
       active: true,
     });
 

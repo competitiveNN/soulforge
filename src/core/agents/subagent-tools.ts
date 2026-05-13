@@ -60,7 +60,30 @@ export interface SubagentModels {
   forgeTools?: Record<string, unknown>;
   /** Mutable ref to the parent forge's conversation messages — used for doppelganger mode. */
   parentMessagesRef?: { current: import("@ai-sdk/provider-utils").ModelMessage[] | null };
+  /** Called before a large dispatch to allow the parent to compact its context first. */
+  maybeCompact?: () => Promise<void>;
 }
+
+// Estimate token count from messages (chars / 4 heuristic).
+function estimateMessageTokens(messages: Array<{ content: unknown }>): number {
+  const totalChars = messages.reduce((sum: number, m) => {
+    if (typeof m.content === "string") return sum + m.content.length;
+    if (Array.isArray(m.content)) {
+      return (
+        sum +
+        m.content.reduce((s: number, p: unknown) => {
+          if (typeof p === "object" && p !== null && "text" in p)
+            return s + String((p as { text: string }).text).length;
+          return s + JSON.stringify(p).length;
+        }, 0)
+      );
+    }
+    return sum;
+  }, 0);
+  return Math.ceil(totalChars / 4);
+}
+
+export { estimateMessageTokens };
 
 // Tools that explore/investigate sparks must not execute.
 // Definitions are still sent (same as forge) for cache prefix hits.

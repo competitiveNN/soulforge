@@ -2,7 +2,7 @@ import { decodePasteBytes, type PasteEvent } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
-import { saveGlobalConfig } from "../../config/index.js";
+import { loadConfig, saveGlobalConfig } from "../../config/index.js";
 import { providerIcon } from "../../core/icons.js";
 import { getAllProviders } from "../../core/llm/providers/index.js";
 import {
@@ -70,7 +70,7 @@ const useApiKeyStore = create<ApiKeyState>()((set, get) => ({
 }));
 
 interface MenuRow extends GroupedItem {
-  kind: "set" | "remove" | "priority";
+  kind: "set" | "remove" | "priority" | "toggle";
   targetKey?: SecretKey;
 }
 
@@ -202,6 +202,13 @@ export function ApiKeySettings({ visible, onClose }: Props) {
           label: "Resolution",
           meta: priority === "env" ? "env vars first" : "app keys first",
         },
+        {
+          id: "retry-403",
+          kind: "toggle",
+          label: "Retry on 403",
+          meta: loadConfig().retryOn403 !== false ? "on" : "off",
+          active: loadConfig().retryOn403 !== false,
+        },
       ],
     });
     return gs;
@@ -236,6 +243,13 @@ export function ApiKeySettings({ visible, onClose }: Props) {
     refresh(keyItems);
     saveGlobalConfig({ keyPriority: next });
     popFlash("ok", `Priority: ${next === "env" ? "env first" : "app first"}`);
+  };
+
+  const toggleRetry403 = () => {
+    const cfg = loadConfig();
+    const next = cfg.retryOn403 === false;
+    saveGlobalConfig({ retryOn403: next });
+    popFlash("ok", `Retry on 403 ${next ? "enabled" : "disabled"}`);
   };
 
   const confirmInput = () => {
@@ -317,6 +331,7 @@ export function ApiKeySettings({ visible, onClose }: Props) {
       if (r?.kind === "item" && r.item) {
         const row = r.item as MenuRow;
         if (row.kind === "priority") togglePriority();
+        else if (row.kind === "toggle") toggleRetry403();
         else if (row.kind === "set" && row.targetKey) {
           setInputTarget(row.targetKey);
           setInputValue("");

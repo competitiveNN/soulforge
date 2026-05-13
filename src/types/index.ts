@@ -402,13 +402,17 @@ export interface AppConfig {
   toolTimeout?: number;
   /** Retry behavior for transient provider errors (429, 529, 503, timeouts, overloaded). */
   retry?: RetryConfig;
+  /** Retry on HTTP 403 (may indicate key rotation). Default: false */
+  retryOn403?: boolean;
   /** Memory subsystem config. embeddingModel: AI SDK model id (e.g. "openai/text-embedding-3-small"). null/undefined falls back to hashbag-v2. */
   memory?: { embeddingModel?: string | null };
 }
 
 export interface RetryConfig {
-  /** Max retry attempts per request. Default: 3. Range: 1–10. */
+  /** Max retry attempts for transient errors (429, 529, 503, timeouts, overloaded). Default: 3. Range: 1–10. */
   maxAttempts?: number;
+  /** Max retry attempts when the stream stalls (no data for the watchdog timeout). Default: 3. Range: 1–10. */
+  maxStallRetries?: number;
   /** Base delay in ms before the first retry. Doubles each attempt + jitter. Default: 2000 (agents), 1000 (chat). Range: 250–60000. */
   baseDelayMs?: number;
 }

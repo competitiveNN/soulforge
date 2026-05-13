@@ -54,6 +54,7 @@ export interface CommandContext {
   openProviderSettings: () => void;
   openWebSearchSettings: () => void;
   openApiKeySettings: () => void;
+  retry403: boolean;
   openLspStatus: () => void;
   openLspInstall: () => void;
   openHearthSettings: () => void;

@@ -51,9 +51,16 @@ export function getActiveProviderId(): string | null {
   return activeProviderId;
 }
 
-function extractProviderId(modelId: string): string {
+/**
+ * Extract the provider ID from a model ID (e.g. "anthropic/claude-sonnet" → "anthropic").
+ */
+export function getProviderIdFromModelId(modelId: string): string {
   const slashIdx = modelId.indexOf("/");
   return slashIdx >= 0 ? modelId.slice(0, slashIdx) : "";
+}
+
+function extractProviderId(modelId: string): string {
+  return getProviderIdFromModelId(modelId);
 }
 
 /**

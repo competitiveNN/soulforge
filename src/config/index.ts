@@ -61,6 +61,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     syncEditorOnEdit: false,
   },
   codeExecution: true,
+  retryOn403: false,
   webSearch: true,
   compaction: {
     strategy: "v2",

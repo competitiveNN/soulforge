@@ -35,7 +35,12 @@ import {
   getModelContextWindow,
   getShortModelLabel,
 } from "../core/llm/models.js";
-import { getActiveProviderId, resolveModel } from "../core/llm/provider.js";
+import {
+  getActiveProviderId,
+  getProviderIdFromModelId,
+  notifyProviderSwitch,
+  resolveModel,
+} from "../core/llm/provider.js";
 import {
   buildProviderOptions,
   degradeProviderOptions,
@@ -43,6 +48,7 @@ import {
   supportsTemperature,
 } from "../core/llm/provider-options.js";
 import { resolveTaskModel } from "../core/llm/task-router.js";
+import { getLastKeyResolution } from "../core/llm/credential-pool.js";
 import { onCompaction, writeDiary } from "../core/mcp/mempalace.js";
 import { bounceProxy, proxyHealthProbe } from "../core/proxy/lifecycle.js";
 import { resolveRetrySettings } from "../core/retry/settings.js";
@@ -1151,13 +1157,24 @@ export function useChat({
           return sum;
         }, 0);
         const afterChars = systemChars + newCoreChars;
-        const afterPct = Math.round((afterChars / charsPerToken / contextWindow) * 100);
-        const estimatedTokens = Math.ceil(afterChars / charsPerToken);
-        setContextTokens(0);
+        // Prefer actual API token counts from compaction output over char-based estimation.
+        // compactUsage exists when the compaction model has the data; fall back to estimation for v2-skip-llm.
+        let estimatedTokens: number;
+        if (compactUsage && compactUsage.inputTokens > 0) {
+          // inputTokens already includes the full prompt, but we also need to account for
+          // the recent messages that weren't compacted. Add char-estimate for those.
+          const recentChars = newCoreChars;
+          const recentTokenEstimate = Math.ceil(recentChars / charsPerToken);
+          estimatedTokens = compactUsage.inputTokens + recentTokenEstimate;
+        } else {
+          estimatedTokens = Math.ceil(afterChars / charsPerToken);
+        }
+        const afterPct = Math.round((estimatedTokens / contextWindow) * 100);
+        setContextTokens(estimatedTokens);
         setStreamingChars(0);
         setTokenUsage((prev) => {
           let bd = prev.modelBreakdown;
-          if (compactUsage) {
+          if (compactUsage && compactUsage.inputTokens > 0) {
             // SDK inputTokens = total prompt (noCache + cacheRead + cacheWrite).
             // Split so cache-read tokens are billed at the cache-read rate (10× cheaper)
             // instead of the full input rate. Without this, compaction over-bills ~10×.
@@ -1175,8 +1192,8 @@ export function useChat({
             ...ZERO_USAGE,
             prompt: estimatedTokens,
             total: estimatedTokens,
-            cacheRead: prev.cacheRead,
-            cacheWrite: prev.cacheWrite,
+            cacheRead: compactUsage?.cacheReadTokens ?? prev.cacheRead,
+            cacheWrite: compactUsage?.cacheWriteTokens ?? prev.cacheWrite,
             subagentInput: prev.subagentInput,
             subagentOutput: prev.subagentOutput,
             modelBreakdown: bd,
@@ -1856,9 +1873,11 @@ export function useChat({
 
       // Stream stall watchdog — hoisted so catch/finally can access.
       // Initialized after stream starts; no-ops if stream never starts.
-      const { maxRetries: MAX_TRANSIENT_RETRIES, baseDelayMs: RETRY_BASE_DELAY_MS } =
-        resolveRetrySettings(effectiveConfig.retry);
-      const STALL_MAX_RETRIES = MAX_TRANSIENT_RETRIES;
+const {
+         maxRetries: MAX_TRANSIENT_RETRIES,
+         maxStallRetries: MAX_STALL_RETRIES,
+         baseDelayMs: RETRY_BASE_DELAY_MS,
+       } = resolveRetrySettings(effectiveConfig.retry);
       let stallWatchdog: ReturnType<typeof setInterval> | null = null;
       let unsubStallWatch1: (() => void) | null = null;
       let unsubStallWatch2: (() => void) | null = null;
@@ -2440,20 +2459,20 @@ let stallAbortedAt = 0;
               stallTriggered = true;
               stallRetryCountRef.current++;
               const count = stallRetryCountRef.current;
-              if (count <= STALL_MAX_RETRIES) {
+              if (count <= MAX_STALL_RETRIES) {
                 setMessages((prev) => [
                   ...prev,
                   {
                     id: crypto.randomUUID(),
                     role: "system",
-                    content: `Connection stalled — no activity for ${String(Math.round(firedThresholdMs / 1000))}s. Auto-retrying (${String(count)}/${String(STALL_MAX_RETRIES)})…`,
+                    content: `Connection stalled — no activity for ${String(Math.round(firedThresholdMs / 1000))}s. Auto-retrying (${String(count)}/${String(MAX_STALL_RETRIES)})…`,
                     timestamp: Date.now(),
                     showInChat: true,
                   },
                 ]);
                 logBackgroundError(
                   "stream-stall",
-                  `No stream activity — auto-retrying (${String(count)}/${String(STALL_MAX_RETRIES)})`,
+                  `No stream activity — auto-retrying (${String(count)}/${String(MAX_STALL_RETRIES)})`,
                 );
               } else {
                 setMessages((prev) => [
@@ -2461,14 +2480,14 @@ let stallAbortedAt = 0;
                   {
                     id: crypto.randomUUID(),
                     role: "system",
-                    content: `Connection stalled ${String(STALL_MAX_RETRIES)} times — giving up. You can resend your message to try again.`,
+                    content: `Connection stalled ${String(MAX_STALL_RETRIES)} times — giving up. You can resend your message to try again.`,
                     timestamp: Date.now(),
                     showInChat: true,
                   },
                 ]);
                 logBackgroundError(
                   "stream-stall",
-                  `Stream stalled ${String(STALL_MAX_RETRIES)} times — giving up`,
+                  `Stream stalled ${String(MAX_STALL_RETRIES)} times — giving up`,
                 );
               }
               stallTriggered = true; // Mark that abort is from watchdog
@@ -2928,7 +2947,24 @@ let stallAbortedAt = 0;
                   sErr?.data != null ? JSON.stringify(sErr.data).slice(0, 500) : undefined;
                 const enriched = sBody ?? sData;
                 const displayErr = enriched ? `${errText} · ${enriched}` : errText;
-                logBackgroundError("api", displayErr);
+
+                // Enrich error log with auth diagnostic context (model, key index, endpoint)
+                const modelId = activeModelRef.current;
+                const providerId = getProviderIdFromModelId(modelId);
+                const keyResolution = getLastKeyResolution(providerId);
+                let authDebugParts: string[] = [];
+                authDebugParts.push(`model: ${modelId}`);
+                if (keyResolution) {
+                  authDebugParts.push(`api-key: #${keyResolution.keyIndex + 1} of ${keyResolution.keyCount}`);
+                  authDebugParts.push(`key-source: ${keyResolution.envVar}`);
+                }
+                const errObjUrl = sErr?.url as string | undefined;
+                if (errObjUrl) {
+                  authDebugParts.push(`api-url: ${errObjUrl}`);
+                }
+                const authContextStr = authDebugParts.length > 0 ? ` [${authDebugParts.join(", ")}]` : "";
+
+                logBackgroundError("api", displayErr + authContextStr);
                 appendText(`\n\n_Error: ${displayErr}_`);
                 if (streamErrors.length < 50) {
                   streamErrors.push(
@@ -3122,15 +3158,19 @@ let stallAbortedAt = 0;
           }
           const isAbort = abortController.signal.aborted;
           const msg = err instanceof Error ? err.message : String(err);
-          const isTransient =
-            /overloaded|529|429|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection|enginecore/i.test(
-              msg,
-            );
+           const retryOn403 = effectiveConfigRef.current.retryOn403 !== false;
+           const rateLimit403 =
+             retryOn403 && /overloaded|rate.?limit|too many requests/i.test(msg);
+           const isTransient =
+             new RegExp(
+               `overloaded|529|429|rate.?limit|too many requests|503|502|timeout|timed out|fetch failed|network|econnreset|econnrefused|enotfound|eai_again|socket hang up|connection (?:error|reset|refused|closed)|stream (?:error|closed)|premature close|terminated|aborted.*connection|enginecore${rateLimit403 ? "|403" : ""}`,
+               "i",
+             ).test(msg);
           const isStallRetry =
             isAbort &&
             stallTriggered &&
             !userAbortedRef.current &&
-            stallRetryCountRef.current <= STALL_MAX_RETRIES;
+            stallRetryCountRef.current <= MAX_STALL_RETRIES;
 
           // Retry on transient errors during streaming (e.g. "socket connection closed unexpectedly")
           if (isTransient && !isStallRetry) {
@@ -3254,6 +3294,7 @@ let stallAbortedAt = 0;
               const nextModel = fallbackModels[fallbackIndex] as string;
               activeModelRef.current = nextModel;
               streamRetryCount = 0; // Reset retry count for the new model
+              notifyProviderSwitch(nextModel);
               setActiveModel(nextModel);
               onModelChange?.(nextModel);
               setMessages((prev) => [
@@ -3319,7 +3360,7 @@ let stallAbortedAt = 0;
                 bridgeStreamEmitter.flushNow(tabId);
                 bridgeStreamEmitter.stream(tabId, {
                   type: "warning",
-                  message: `Stream stalled, auto-retrying (${String(stallRetryCountRef.current)}/${String(STALL_MAX_RETRIES)})`,
+                  message: `Stream stalled, auto-retrying (${String(stallRetryCountRef.current)}/${String(MAX_STALL_RETRIES)})`,
                 });
               });
               if (completedCalls.length > 0) {
@@ -3378,9 +3419,17 @@ let stallAbortedAt = 0;
           }
 
           const rawMsg = err instanceof Error ? err.message : String(err);
-          // Log non-abort errors to /errors for debugging
-          if (!isAbort) {
-            logBackgroundError("agent-error", rawMsg);
+          const rawStack = err instanceof Error ? err.stack : undefined;
+const rawChain = (err as any).cause?.message ?? String(err);
+
+           const errObj =
+             err != null && typeof err === "object" ? (err as Record<string, unknown>) : null;
+
+           // Log non-abort errors to /errors for debugging — include cause chain + stack trace
+           if (!isAbort) {
+            const parts = [rawChain];
+            if (rawStack) parts.push(rawStack);
+            logBackgroundError("agent-error", parts.join("\n\n"));
           }
           // ── StopFailure hook ──
           if (!isAbort) {
@@ -3392,9 +3441,7 @@ let stallAbortedAt = 0;
             }).catch(() => {});
           }
           const isTransientStream =
-            /overloaded|529|429|403|rate.?limit|too many requests|503|502/i.test(rawMsg);
-          const errObj =
-            err != null && typeof err === "object" ? (err as Record<string, unknown>) : null;
+            /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(rawMsg);
           const apiBody =
             errObj && typeof errObj.responseBody === "string" && errObj.responseBody.length > 0
               ? errObj.responseBody
@@ -3403,9 +3450,30 @@ let stallAbortedAt = 0;
             errObj?.data != null ? JSON.stringify(errObj.data).slice(0, 500) : undefined;
           const detail = apiBody?.slice(0, 500) ?? apiData;
           const enrichedMsg = detail ? `${rawMsg} · ${detail}` : rawMsg;
+
+          // Enrich error with diagnostic context (model, key index, API URL)
+          const modelId = activeModelRef.current;
+          const providerId = getProviderIdFromModelId(modelId);
+          const keyResolution = getLastKeyResolution(providerId);
+          let ctxParts: string[] = [];
+          ctxParts.push(`model: ${modelId}`);
+          if (keyResolution) {
+            ctxParts.push(`api-key: #${keyResolution.keyIndex + 1} of ${keyResolution.keyCount}`);
+            ctxParts.push(`key-source: ${keyResolution.envVar}`);
+          }
+          const url = errObj?.url as string | undefined;
+          if (url) {
+            ctxParts.push(`api-url: ${url}`);
+          }
+          const authDebugContext = ctxParts.length > 0 ? ` [${ctxParts.join(", ")}]` : "";
+
+          // Log non-abort errors to /errors for debugging (with auth context)
+          if (!isAbort) {
+            logBackgroundError("agent-error", enrichedMsg + authDebugContext);
+          }
           const errorMsg = isTransientStream
             ? `Provider returned a transient error (${rawMsg.slice(0, 120)}). Please retry.`
-            : enrichedMsg;
+            : enrichedMsg + authDebugContext;
           const errorStack = !isTransientStream && err instanceof Error ? err.stack : undefined;
           // Mark in-flight tool calls as interrupted so they don't show stuck spinners
           if (isAbort) {

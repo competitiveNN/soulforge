@@ -1326,6 +1326,7 @@ export function App({
         openProviderSettings: () => uiState.openModal("providerSettings"),
         openWebSearchSettings: () => uiState.openModal("webSearchSettings"),
         openApiKeySettings: () => uiState.openModal("apiKeySettings"),
+        retry403: effectiveConfig.retryOn403 !== false,
         openLspStatus: () => uiState.openModal("lspStatus"),
         openHearthSettings: () => uiState.openModal("hearthSettings"),
         openCompactionLog: () => uiState.openModal("compactionLog"),
@@ -1361,8 +1362,9 @@ export function App({
       effectiveConfig.agentFeatures,
       effectiveConfig.instructionFiles,
       handleNewSession,
-      effectiveConfig.watchdog,
-      syncActiveModel,
+       effectiveConfig.watchdog,
+       effectiveConfig.retryOn403,
+       syncActiveModel,
     ],
   );
 

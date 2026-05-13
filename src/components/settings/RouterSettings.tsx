@@ -5,12 +5,13 @@ import type { TaskRouter } from "../../types/index.js";
 import type { ConfigScope } from "../layout/shared.js";
 import { CONFIG_SCOPES } from "../layout/shared.js";
 import {
-  handleCursorNavKey,
-  PremiumPopup,
-  Section,
-  SegmentedControl,
-  VSpacer,
-} from "../ui/index.js";
+   handleCursorNavKey,
+   Hint,
+   PremiumPopup,
+   Section,
+   SegmentedControl,
+   VSpacer,
+ } from "../ui/index.js";
 
 const BOLD = 1;
 
@@ -41,10 +42,11 @@ interface PickerDef {
 type Def = SlotDef | PickerDef;
 
 interface SectionDef {
-  id: string;
-  title: string;
-  defs: Def[];
-}
+   id: string;
+   title: string;
+   subtitle?: string;
+   defs: Def[];
+ }
 
 const SECTIONS: SectionDef[] = [
   {
@@ -129,15 +131,6 @@ type Row =
   | { kind: "slot"; section: SectionDef; def: SlotDef }
   | { kind: "picker"; section: SectionDef; def: PickerDef }
   | { kind: "fallback"; modelId: string; fallbacks: string[] };
-
-interface SlotRow {
-  id: string;
-  label: string;
-  icon: string;
-  meta: string;
-  active: boolean;
-  def: Def;
-}
 
 // --- Layout helpers ---
 
@@ -271,64 +264,6 @@ export function RouterSettings({
     : null;
 
 // --- Render helpers ---
-
-  const groups = useMemo<{ id: string; label: string; accent?: string; meta?: string; items: SlotRow[] }[]>(
-    () =>
-      SECTIONS.map((s) => {
-        if (s.id === "fallback") {
-          const fallbackEntries = modelsInUse.map<SlotRow>((modelId) => {
-            const fallbacks = modelFallback?.[modelId] ?? [];
-            const fallbackLabels =
-              fallbacks.length > 0
-                ? fallbacks.map((m) => m.split("/").pop() ?? m).join(", ")
-                : "(no fallbacks)";
-            return {
-              id: `fallback:${modelId}`,
-              label: modelId.split("/").pop() ?? modelId,
-              icon: "model" as const,
-              meta: fallbacks.length > 0 ? `→ ${fallbackLabels}` : fallbackLabels,
-              active: fallbacks.length > 0,
-              def: {
-                kind: "slot",
-                key: "default" as keyof TaskRouter,
-                label: "",
-                icon: "" as any,
-                hint: "",
-              },
-            };
-          });
-          return {
-            id: s.id,
-            label: s.title,
-            accent: t.brandAlt,
-            meta: s.subtitle,
-            items: fallbackEntries,
-          };
-        }
-        return {
-          id: s.id,
-          label: s.title,
-          accent: t.brandAlt,
-          meta: s.subtitle,
-          items: s.defs
-            .filter((def) => def.kind === "slot")
-            .map((def) => {
-              const modelId = router?.[def.key] ?? null;
-              return {
-                id: String(def.key),
-                label: def.label,
-                icon: def.icon,
-                meta: (modelId ?? `↳ ${activeModel}`) as string,
-                active: !!modelId,
-                def,
-              };
-            }),
-        };
-      }),
-    [router, modelFallback, activeModel, modelsInUse, t],
-  );
-
-  // --- Event handlers ---
 
   useKeyboard((evt) => {
     if (!visible) return;
@@ -535,9 +470,8 @@ export function RouterSettings({
         <VSpacer />
         {pickerDefs.map((def) => {
           const cur = router?.[def.key];
-          const num = typeof cur === "number" ? cur : def.defaultValue;
-          const isSelected = selectedPicker?.key === def.key;
-          return (
+const num = typeof cur === "number" ? cur : def.defaultValue;
+           return (
             <SegmentedControl
               key={def.key}
               label={def.label}

@@ -517,7 +517,10 @@ function buildForgePrepareStep(
   };
 }
 
-const instructionsCache = new WeakMap<ContextManager, { text: string; key: string }>();
+const instructionsCache = new WeakMap<
+  ContextManager,
+  { text: string; key: string; size: number }
+>();
 
 function buildInstructions(cm: ContextManager, modelId: string): string {
   const key = cm.getInstructionsCacheKey(modelId);
@@ -529,8 +532,13 @@ function buildInstructions(cm: ContextManager, modelId: string): string {
   const skills = cm.buildSkillsBlock();
   if (skills) parts.push(skills);
   const text = parts.join("\n\n");
-  if (snapshot) instructionsCache.set(cm, { text, key });
+  if (snapshot) instructionsCache.set(cm, { text, key, size: text.length });
   return text;
+}
+
+/** Returns the cached size (in chars) of the last built instructions for this context manager. */
+export function getCachedInstructionsSize(cm: ContextManager): number | undefined {
+  return instructionsCache.get(cm)?.size;
 }
 
 interface ForgeAgentOptions {
@@ -569,6 +577,7 @@ interface ForgeAgentOptions {
   disabledTools?: Set<string>;
   tabId?: string;
   tabLabel?: string;
+  maybeCompact?: () => Promise<void>;
 }
 
 /** Creates the main Forge ToolLoopAgent — model can change between turns (Ctrl+L). */
@@ -600,6 +609,7 @@ export function createForgeAgent({
   disabledTools,
   tabId,
   tabLabel,
+  maybeCompact,
 }: ForgeAgentOptions) {
   const isRestricted = RESTRICTED_MODES.has(forgeMode);
   const repoMap = contextManager.isRepoMapReady() ? contextManager.getRepoMap() : undefined;
@@ -790,6 +800,7 @@ export function createForgeAgent({
         forgeInstructions,
         forgeTools,
         parentMessagesRef,
+        maybeCompact,
       });
 
   // Plan mode requires `plan`/`update_plan_step` tools; `ask_user` is broadly useful too.

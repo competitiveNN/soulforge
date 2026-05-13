@@ -178,7 +178,7 @@ export function ContextBar({ contextManager, suppressCompacting }: Props) {
       const charEstimate = (systemChars + state.chatChars + state.subagentChars) / CHARS_PER_TOKEN;
       const chatCharsDelta = Math.max(0, state.chatChars - state.chatCharsAtSnapshot);
       const totalTokens = isApi
-        ? state.contextTokens + (chatCharsDelta + state.subagentChars) / CHARS_PER_TOKEN
+        ? state.contextTokens + chatCharsDelta / CHARS_PER_TOKEN
         : charEstimate;
       const rawPct = (totalTokens / ctxWindow) * 100;
       const pct = totalTokens > 0 ? Math.min(100, Math.max(1, Math.round(rawPct))) : 0;

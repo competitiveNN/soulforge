@@ -614,7 +614,7 @@ export function CommandPicker({ visible, config, onClose }: Props) {
                       : option.value === config.currentValue
                     : false
                 }
->>>>>>> 830fa53 (Apply review feedback on /watchdog alias, split timeouts picker, add separator kind, fix test typo)                innerW={innerW}
+                  innerW={innerW}
                 popupBg={POPUP_BG}
                 popupHl={POPUP_HL}
                 brandSecondary={t.brandSecondary}

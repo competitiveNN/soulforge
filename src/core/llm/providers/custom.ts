@@ -1,6 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { getCompatReasoningBody } from "../compat-reasoning.js";
-import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
+import { createReasoningFetchWrapper, buildOpenAICompatReasoningBody } from "./reasoning-fetch.js";
 import { getPooledApiKey } from "../credential-pool.js";
 import type {
   CustomProviderConfig,
