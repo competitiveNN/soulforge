@@ -12,8 +12,6 @@ import type { SymbolForSummary } from "../intelligence/repo-map.js";
 import { resolveModel } from "../llm/provider.js";
 import { EPHEMERAL_CACHE, supportsTemperature } from "../llm/provider-options.js";
 import { MemoryManager } from "../memory/manager.js";
-import { MemoryRecall } from "../memory/recall.js";
-import { describeRecallSignals, MEMORY_RECALL_ACK } from "../memory/types.js";
 import {
   buildDirectoryTree,
   buildSystemPrompt as buildPrompt,
@@ -36,7 +34,6 @@ import { detectToolchain } from "./toolchain.js";
 export interface SharedContextResources {
   repoMap: IntelligenceClient;
   memoryManager: MemoryManager;
-  memoryRecall?: MemoryRecall;
   workspaceCoordinator?: import("../coordination/WorkspaceCoordinator.js").WorkspaceCoordinator;
   parent?: ContextManager;
 }
@@ -56,16 +53,6 @@ export class ContextManager {
   private hasGhCli: boolean | null = null;
   private skills = new Map<string, string>();
   private memoryManager: MemoryManager;
-  private memoryRecall: MemoryRecall;
-  /** Cache for buildMemoryRecallMessages — keyed on (memGen, editEpoch, lastUserMsg, editedFiles). */
-  private recallCache: {
-    key: string;
-    pair: [{ role: "user"; content: string }, { role: "assistant"; content: string }] | null;
-  } | null = null;
-  /** Bumped on every onFileEdited so recall cache misses when the working set shifts. */
-  private recallEditEpoch = 0;
-  /** Memory ids surfaced earlier in this turn-stream — skipped on subsequent recall to avoid duplicate <recalled_memories> blocks. Cleared on cache reset (compaction, /clear, session restore). */
-  private surfacedMemoryIds = new Set<string>();
   private forgeMode: ForgeMode = "default";
   private editorFile: string | null = null;
   private editorOpen = false;
@@ -113,15 +100,12 @@ export class ContextManager {
     if (shared) {
       this.repoMap = shared.repoMap;
       this.memoryManager = shared.memoryManager;
-      this.memoryRecall = shared.memoryRecall ?? this.createMemoryRecall();
       this.shared = shared;
       this.isChild = true;
       this.wireFileEventHandlers();
     } else {
       this.memoryManager = new MemoryManager(cwd);
-      this.memoryManager.noteSessionStart();
       this.repoMap = new IntelligenceClient(cwd);
-      this.memoryRecall = this.createMemoryRecall();
       setIntelligenceClient(this.repoMap);
       this.wireFileEventHandlers();
       if (this.repoMapEnabled) {
@@ -129,8 +113,6 @@ export class ContextManager {
         this.startRepoMapScan();
       }
     }
-    this.maybeWireMemoryEmbedder();
-    this.subscribeToProviderSwitches();
     // Eagerly populate project info cache so sync callers get data immediately
     this.refreshProjectInfo();
   }
@@ -148,7 +130,6 @@ export class ContextManager {
 
     onStep?.("Opening the memory vaults…");
     const memoryManager = new MemoryManager(cwd);
-    memoryManager.noteSessionStart();
     await tick();
 
     onStep?.("Mapping the codebase…");
@@ -164,7 +145,6 @@ export class ContextManager {
       cm.wireRepoMapCallbacks();
       cm.startRepoMapScan();
     }
-    await cm.maybeWireMemoryEmbedder();
     return cm;
   }
 
@@ -172,105 +152,10 @@ export class ContextManager {
     return {
       repoMap: this.repoMap,
       memoryManager: this.memoryManager,
-      memoryRecall: this.memoryRecall,
       workspaceCoordinator: this.shared?.workspaceCoordinator,
       parent: this,
     };
   }
-
-  getMemoryRecall(): MemoryRecall {
-    return this.memoryRecall;
-  }
-
-  private createMemoryRecall(): MemoryRecall {
-    const projectDb = this.memoryManager.getDbForScope("project");
-    const globalDb = this.memoryManager.getDbForScope("global");
-    const adapt = (db: typeof projectDb) => ({
-      searchUnicode: (q: string, l?: number) => db.searchUnicode(q, l),
-      searchTrigram: (q: string, l?: number) => db.searchTrigram(q, l),
-      searchTrigramWithBigram: (q: string, l?: number) => db.searchTrigramWithBigram(q, l),
-      findByFileIds: (ids: number[], l?: number) => db.findByFileIds(ids, l),
-      findByPaths: (paths: string[], l?: number) => db.findByPaths(paths, l),
-      topByUsage: (l?: number) => db.topByUsage(l),
-      readMany: (ids: string[]) => db.readMany(ids),
-      fileIdsByMemoryIds: (ids: string[]) => db.fileIdsByMemoryIds(ids),
-    });
-    return new MemoryRecall(
-      [
-        { scope: "project", db: adapt(projectDb) },
-        { scope: "global", db: adapt(globalDb) },
-      ],
-      this.repoMap,
-    );
-  }
-
-  async buildMemoryRecallMessages(
-    lastUserMessage: string,
-  ): Promise<[{ role: "user"; content: string }, { role: "assistant"; content: string }] | null> {
-    const editedPaths = [...this.editedFiles]
-      .map((abs) => (abs.startsWith(`${this.cwd}/`) ? abs.slice(this.cwd.length + 1) : abs))
-      .sort();
-    const memGen = this.memoryManager.generation;
-    const readScope = this.memoryManager.scopeConfig.readScope;
-    if (readScope === "none") return null;
-    const cacheKey = `${memGen}|${this.recallEditEpoch}|${readScope}|${lastUserMessage}|${editedPaths.join(",")}`;
-    if (this.recallCache && this.recallCache.key === cacheKey) {
-      return this.recallCache.pair;
-    }
-
-    let results: import("../memory/types.js").MemoryRecallResult[];
-    try {
-      results = await this.memoryRecall.recall({
-        query: lastUserMessage,
-        editedFiles: editedPaths,
-        readScope,
-      });
-    } catch {
-      this.recallCache = { key: cacheKey, pair: null };
-      return null;
-    }
-    const fresh = results.filter((r) => !this.surfacedMemoryIds.has(r.record.id));
-    if (fresh.length === 0) {
-      this.recallCache = { key: cacheKey, pair: null };
-      return null;
-    }
-
-    // Stub-mode inject: summary + id + signals only. Details live in the DB
-    // and are pulled on demand via memory(get, id) when the agent decides
-    // the memory is actually relevant. Cuts per-turn cost ~80% vs inline.
-    const lines: string[] = ["<recalled_memories>"];
-    const surfacedIds: Array<{ scope: "global" | "project"; id: string }> = [];
-    let anyHasDetails = false;
-    for (const { record, scope, signals } of fresh) {
-      surfacedIds.push({ scope, id: record.id });
-      this.surfacedMemoryIds.add(record.id);
-      const cat = record.category ?? "—";
-      const why = describeRecallSignals(signals);
-      const whySuffix = why ? `  · via ${why}` : "";
-      const hasBody = record.details.length > 0;
-      if (hasBody) anyHasDetails = true;
-      const bodyHint = hasBody ? "  ↳ has details" : "";
-      lines.push(`[${cat}] ${record.id.slice(0, 8)} — ${record.summary}${whySuffix}${bodyHint}`);
-    }
-    if (anyHasDetails) {
-      lines.push("(call memory(action:'get', id:<8-char prefix>) to read full details)");
-    }
-    lines.push("</recalled_memories>");
-
-    this.memoryManager.recordRecallAcross(surfacedIds);
-
-    const userMessage = lines.join("\n");
-    const assistantAck = MEMORY_RECALL_ACK(surfacedIds.length);
-    const pair: [{ role: "user"; content: string }, { role: "assistant"; content: string }] = [
-      { role: "user" as const, content: userMessage },
-      { role: "assistant" as const, content: assistantAck },
-    ];
-    this.recallCache = { key: cacheKey, pair };
-    return pair;
-  }
-
-  /** Provider options for the memory recall message pair — cached ephemerally. */
-  static readonly MEMORY_RECALL_PROVIDER_OPTIONS = EPHEMERAL_CACHE;
 
   setTabId(tabId: string): void {
     this.tabId = tabId;
@@ -292,10 +177,7 @@ export class ContextManager {
   private unsubRead: (() => void) | null = null;
 
   private wireFileEventHandlers(): void {
-    this.unsubEdit = onFileEdited((absPath) => {
-      this.recallEditEpoch++;
-      this.onFileChanged(absPath);
-    });
+    this.unsubEdit = onFileEdited((absPath) => this.onFileChanged(absPath));
     this.unsubRead = onFileRead((absPath) => this.trackMentionedFile(absPath));
     setNeovimFileWrittenHandler((absPath) => {
       emitFileEdited(absPath, "");
@@ -548,41 +430,15 @@ export class ContextManager {
     };
   }
 
-  /**
-   * Reset per-conversation tracking. Use for new session / context clear /
-   * session restore. **Not** for compaction — that crosses no semantic boundary,
-   * so already-surfaced memory ids must persist (otherwise they re-inject after
-   * the summary already folded them in). Use `resetForCompaction()` instead.
-   */
+  /** Reset per-conversation tracking (call on new session / context clear / compaction) */
   resetConversationTracking(): void {
     this.editedFiles.clear();
-    this.surfacedMemoryIds.clear();
-    this.recallCache = null;
     this.mentionedFiles.clear();
 
     this.conversationTokens = 0;
     if (this.repoMapCache) this.repoMapCache.at = 0;
     // Increment generation so buildInstructions() re-renders the soul map
     // with fresh DB state instead of returning the stale cached string.
-    this.repoMapGeneration++;
-    this.soulMapDiffChangedFiles.clear();
-    this.soulMapDiffSeq = 0;
-    this.soulMapSnapshotPaths.clear();
-    this.soulMapDiffBlocks.clear();
-    this.pendingSoulMapDiff = null;
-    this.lastEmittedSoulMapDiff = null;
-    this.warmRepoMapCache();
-  }
-
-  /**
-   * Lighter reset for mid-session compaction. Keeps `surfacedMemoryIds` so
-   * memories already shown this conversation don't re-inject after the summary
-   * already references them. Soul-map diff state still resets — the post-compact
-   * message stream is a fresh prefix from the model's perspective.
-   */
-  resetForCompaction(): void {
-    this.recallCache = null;
-    if (this.repoMapCache) this.repoMapCache.at = 0;
     this.repoMapGeneration++;
     this.soulMapDiffChangedFiles.clear();
     this.soulMapDiffSeq = 0;
@@ -1059,8 +915,6 @@ export class ContextManager {
     this.unsubRead?.();
     this.unsubEdit = null;
     this.unsubRead = null;
-    this._unsubProviderSwitch?.();
-    this._unsubProviderSwitch = null;
     if (!this.isChild) {
       this.repoMap.close().catch(() => {});
       this.memoryManager.close();
@@ -1506,96 +1360,6 @@ export class ContextManager {
     } catch {}
     this.fileTreeRefreshing = false;
   }
-
-  /**
-   * Resolve and wire the memory embedder. Pipeline:
-   *   1. config.memory.embeddingModel (explicit)
-   *   2. config.taskRouter.semantic
-   *   3. heuristic from active chat model's provider
-   *   4. null → hashbag-v2 fallback
-   *
-   * Best-effort — every failure path falls back to hashbag-v2 and logs
-   * once to background errors. NEVER throws. Idempotent: re-calling with
-   * the same resolved model is a no-op via MemoryManager.configureEmbedder.
-   */
-  private async maybeWireMemoryEmbedder(activeModelId?: string): Promise<void> {
-    try {
-      const [{ loadConfig }, { resolveEmbeddingModel }] = await Promise.all([
-        import("../../config/index.js"),
-        import("../memory/embedder-resolver.js"),
-      ]);
-      const cfg = loadConfig();
-      const active = activeModelId ?? this.lastActiveModel ?? cfg.defaultModel ?? "";
-      const resolution = resolveEmbeddingModel(cfg, active);
-      this._lastEmbedderResolution = resolution;
-      if (!resolution.modelId) {
-        // Explicitly nothing to wire — stay on hashbag, no error.
-        this.memoryManager.setProviderEmbedder(null);
-        this.memoryRecall.setProviderEmbedder(null);
-        return;
-      }
-      const provider = await this.memoryManager.configureEmbedder(resolution.modelId);
-      if (provider) {
-        this.memoryRecall.setProviderEmbedder(provider);
-      } else {
-        // configureEmbedder smoke-tested and rejected — log once, fall back.
-        try {
-          const { logBackgroundError } = await import("../../stores/errors.js");
-          logBackgroundError(
-            "memory.embedder",
-            `Failed to wire ${resolution.modelId} (${resolution.reason}) — using hashbag-v2`,
-          );
-        } catch {}
-        this.memoryRecall.setProviderEmbedder(null);
-      }
-    } catch {
-      // Unrecoverable resolver error — stay on hashbag, no crash.
-      try {
-        this.memoryManager.setProviderEmbedder(null);
-        this.memoryRecall.setProviderEmbedder(null);
-      } catch {}
-    }
-  }
-
-  /** Last embedder resolution result — used by audit/debug surfaces. */
-  private _lastEmbedderResolution:
-    | import("../memory/embedder-resolver.js").EmbedderResolution
-    | null = null;
-
-  getEmbedderResolution(): import("../memory/embedder-resolver.js").EmbedderResolution | null {
-    return this._lastEmbedderResolution;
-  }
-
-  /**
-   * Re-resolve the embedder when the active model changes. Called from
-   * notifyProviderSwitch. Safe to call repeatedly; idempotent when resolved
-   * model id is unchanged.
-   */
-  async refreshMemoryEmbedder(activeModelId: string): Promise<void> {
-    await this.maybeWireMemoryEmbedder(activeModelId);
-  }
-
-  /**
-   * Subscribe to provider switches so the memory embedder refreshes when
-   * the user changes the active chat model. Child CMs (shared resources)
-   * skip this — the parent CM owns the subscription and the shared
-   * memoryManager/memoryRecall pair gets updated in-place.
-   */
-  private subscribeToProviderSwitches(): void {
-    if (this.isChild) return;
-    void import("../llm/provider.js")
-      .then(({ onProviderSwitch }) => {
-        const unsub = onProviderSwitch(async (newModelId) => {
-          try {
-            await this.refreshMemoryEmbedder(newModelId);
-          } catch {}
-        });
-        this._unsubProviderSwitch = unsub;
-      })
-      .catch(() => {});
-  }
-
-  private _unsubProviderSwitch: (() => void) | null = null;
 }
 
 export { extractConversationTerms } from "./conversation-terms.js";

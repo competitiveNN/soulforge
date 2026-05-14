@@ -857,17 +857,8 @@ export function buildSubagentTools(models: SubagentModels) {
               1,
               abortSignal,
             );
-            // Single-agent failure: return error output without throwing.
-            // The bus already contains the failure result; just propagate the text.
             if (!doneResult && !bus.getResult(task.agentId)?.success) {
-              const editedMap = bus.getEditedFiles(task.agentId);
-              const edited = [...editedMap.keys()];
-              const reads = bus.getFileReadRecords(task.agentId);
-              return {
-                reads,
-                filesEdited: edited,
-                output: resultText,
-              } satisfies DispatchOutput;
+              throw new Error(resultText);
             }
             const editedMap = bus.getEditedFiles(task.agentId);
 
@@ -1099,14 +1090,6 @@ export function buildSubagentTools(models: SubagentModels) {
             reads: allReads,
             filesEdited: editedPaths,
             output: sections.join("\n") + dependentWarning,
-          } satisfies DispatchOutput;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          logBackgroundError("dispatch", msg);
-          return {
-            reads: [],
-            filesEdited: [],
-            output: `[Dispatch failed: ${msg}]`,
           } satisfies DispatchOutput;
         } finally {
           if (activeTabId && !editingDone) getWorkspaceCoordinator().agentFinished(activeTabId);

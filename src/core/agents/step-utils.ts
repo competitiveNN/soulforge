@@ -26,13 +26,6 @@ export interface PrepareStepOptions {
   contextWindow?: number;
   disablePruning?: boolean;
   tabId?: string;
-  /** When set, recall a memory pair on each fresh user turn and splice in
-   *  before the user message (cache-stable). */
-  contextManager?: {
-    buildMemoryRecallMessages(
-      lastUserMessage: string,
-    ): Promise<[{ role: "user"; content: string }, { role: "assistant"; content: string }] | null>;
-  };
 }
 
 // Context-proportional thresholds (fraction of model's context window).
@@ -380,7 +373,6 @@ export function buildPrepareStep({
   contextWindow: ctxWindow,
   disablePruning,
   tabId,
-  contextManager,
 }: PrepareStepOptions): PrepareStepResult {
   const cw = Math.min(ctxWindow ?? DEFAULT_CONTEXT_WINDOW, MAX_SUBAGENT_CONTEXT);
   const nudgeThreshold = Math.floor(cw * OUTPUT_NUDGE_PCT);
@@ -395,15 +387,8 @@ export function buildPrepareStep({
   // to keep the system prompt stable for prefix caching.
   const previousInjects: Array<{ cleanInsertAt: number; message: ModelMessage }> = [];
 
-  // Memory recall injects — spliced before the user turn that triggered them.
-  const recallInjects: Array<{
-    cleanInsertAt: number;
-    pair: [ModelMessage, ModelMessage];
-  }> = [];
-  let lastUserTurnCount = 0;
-
   // biome-ignore lint/suspicious/noExplicitAny: TOOLS generic is invariant — tool-agnostic functions use <any> (same as SDK's stepCountIs/hasToolCall)
-  const prepareStep: PrepareStepFunction<any> = async ({ stepNumber, steps, messages }) => {
+  const prepareStep: PrepareStepFunction<any> = ({ stepNumber, steps, messages }) => {
     const result: {
       toolChoice?: "required" | "auto" | "none";
       activeTools?: string[];
@@ -451,12 +436,11 @@ export function buildPrepareStep({
       }
     }
 
-// Use the last step's input tokens as actual context size (not cumulative sum).
-     // Each step re-sends the full message history, so inputTokens reflects real context window usage.
-     const lastStep = steps.length > 0 ? steps[steps.length - 1] : undefined;
-     const contextSize = lastStep?.usage?.inputTokens ?? 0;
+    // Use the last step's input tokens as actual context size (not cumulative sum).
+    // Each step re-sends the full message history, so inputTokens reflects real context window usage.
+    const lastStep = steps.length > 0 ? steps[steps.length - 1] : undefined;
 
-     // API export: dump full request data per step
+    // API export: dump full request data per step
     // Enable via /export api command or SOULFORGE_DEBUG_API=1 env var
     if (apiExportEnabled || process.env.SOULFORGE_DEBUG_API) {
       const msgs = result.messages ?? messages;
@@ -552,15 +536,40 @@ export function buildPrepareStep({
         mkdirSync(subDir, { recursive: true });
         const file = `${subDir}/step-${String(stepNumber).padStart(2, "0")}.json`;
         writeFileSync(file, json, "utf-8");
-});
-  }
+      });
+    }
 
-// Early compaction trigger at 65% of context window from total messages.
-     // This forces text-only output one step before the existing 80% nudge,
-     // giving the caller a chance to compact before hard overflow.
-     // (earlyCompactThreshold and earlyCompact were removed as unused)
+    const contextSize = lastStep?.usage.inputTokens ?? 0;
 
-     // Collect all hints as user message injects (not result.system) for cache stability.
+    // Estimate total context size from message lengths (chars → tokens).
+    // This catches cases where individual step usage stays under the nudge
+    // threshold but the cumulative context grows past it across many steps.
+    const totalMsgChars = messages.reduce((sum, m) => {
+      if (typeof m.content === "string") return sum + m.content.length;
+      if (Array.isArray(m.content)) {
+        return (
+          sum +
+          m.content.reduce(
+            (s, p) =>
+              s +
+              (typeof p === "object" && p && "text" in p
+                ? String((p as { text: string }).text).length
+                : JSON.stringify(p).length),
+            0,
+          )
+        );
+      }
+      return sum;
+    }, 0);
+    const totalMsgTokens = Math.ceil(totalMsgChars / 4);
+    // Early compaction trigger at 65% of context window from total messages.
+    // This forces text-only output one step before the existing 80% nudge,
+    // giving the caller a chance to compact before hard overflow.
+    const EARLY_COMPACT_PCT = 0.65;
+    const earlyCompactThreshold = Math.floor(cw * EARLY_COMPACT_PCT);
+    const shouldEarlyCompact = totalMsgTokens >= earlyCompactThreshold && stepNumber >= 2;
+
+    // Collect all hints as user message injects (not result.system) for cache stability.
     // System prompt stays byte-identical across steps → prefix caching works.
     const hints: string[] = [];
 
@@ -653,51 +662,37 @@ export function buildPrepareStep({
       result.activeTools = [];
     }
 
-    // ── Memory recall injection (subagent) ────────────────────────
-    if (contextManager) {
-      const baseMsgs = sanitizedMessages ?? messages;
-      const userTurnCount = countUserTurnsLocal(baseMsgs);
-      if (userTurnCount > lastUserTurnCount) {
-        lastUserTurnCount = userTurnCount;
-        const lastUserIdx = findLastUserIndexLocal(baseMsgs);
-        const lastUserText = lastUserIdx >= 0 ? extractTextLocal(baseMsgs[lastUserIdx]) : "";
-        if (lastUserText) {
-          try {
-            const pair = await contextManager.buildMemoryRecallMessages(lastUserText);
-            if (pair && lastUserIdx >= 0) {
-              recallInjects.push({
-                cleanInsertAt: lastUserIdx,
-                pair: [
-                  { role: "user" as const, content: pair[0].content } as ModelMessage,
-                  { role: "assistant" as const, content: pair[1].content } as ModelMessage,
-                ],
-              });
-            }
-          } catch {
-            // silent
-          }
-        }
+    // Early compaction: when total message tokens exceed the early threshold,
+    // emit a signal so the caller can compact mid-run, and stop tool usage
+    // on the next step to prevent overflow.
+    if (shouldEarlyCompact && !nudgeFired) {
+      if (parentToolCallId) {
+        emitSubagentStep({
+          parentToolCallId,
+          toolName: "_nudge",
+          args: "context budget — compacting",
+          state: "done",
+          agentId,
+        });
       }
+      hints.push(
+        "Context budget reached. Finish any in-progress tool calls, then write a concise summary of findings so far.",
+      );
+      result.toolChoice = "none";
+      result.activeTools = [];
     }
 
     // Re-insert previous injects + append new one for cache-stable prefix.
-    if (hints.length > 0 || previousInjects.length > 0 || recallInjects.length > 0) {
+    if (hints.length > 0 || previousInjects.length > 0) {
       const msgs = result.messages ?? [...(sanitizedMessages ?? messages)];
       const cleanMsgCount = msgs.length;
 
-      type Splice = { at: number; messages: ModelMessage[] };
-      const splices: Splice[] = [
-        ...previousInjects.map((p) => ({ at: p.cleanInsertAt, messages: [p.message] })),
-        ...recallInjects.map((r) => ({ at: r.cleanInsertAt, messages: [...r.pair] })),
-      ];
-      splices.sort((a, b) => a.at - b.at);
-
       let offset = 0;
-      for (const sp of splices) {
-        const insertAt = sp.at + offset;
+      for (const prev of previousInjects) {
+        const insertAt = prev.cleanInsertAt + offset;
         if (insertAt <= msgs.length) {
-          msgs.splice(insertAt, 0, ...sp.messages);
-          offset += sp.messages.length;
+          msgs.splice(insertAt, 0, prev.message);
+          offset++;
         }
       }
 
@@ -758,35 +753,3 @@ export function buildSymbolLookup(repoMap?: {
 }
 
 export { compactOldToolResults, KEEP_RECENT_MESSAGES };
-
-function countUserTurnsLocal(messages: ModelMessage[]): number {
-  let n = 0;
-  for (const m of messages) {
-    if (m.role === "user") n++;
-  }
-  return n;
-}
-
-function findLastUserIndexLocal(messages: ModelMessage[]): number {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i]?.role === "user") return i;
-  }
-  return -1;
-}
-
-function extractTextLocal(message: ModelMessage | undefined): string {
-  if (!message) return "";
-  const c = message.content as unknown;
-  if (typeof c === "string") return c.trim();
-  if (Array.isArray(c)) {
-    const parts: string[] = [];
-    for (const p of c) {
-      if (p && typeof p === "object" && "type" in p && (p as { type: string }).type === "text") {
-        const t = (p as { text?: unknown }).text;
-        if (typeof t === "string") parts.push(t);
-      }
-    }
-    return parts.join("\n").trim();
-  }
-  return "";
-}
