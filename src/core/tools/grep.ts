@@ -20,9 +20,9 @@ export const grepTool = {
   name: "grep",
   description:
     "[TIER-2] Raw ripgrep search — use soul_grep first, fall back to this for complex regex or non-code files. " +
-    "Returns matching file paths sorted by modification time. " +
-    "HOW TO USE: Provide a regex pattern. Optionally specify path to narrow scope, glob to filter file types. " +
-    "LIMITATIONS: Results limited to 100 files (newest first). Hidden files are skipped.",
+    "Returns matching lines with file paths and line numbers. Respects .gitignore. " +
+    "HOW TO USE: Provide a regex pattern. Optionally specify path to narrow scope, glob to filter file types, maxCount to cap matches per file (default 50). " +
+    "LIMITATIONS: Output capped at 32KB. Long lines truncated at 1000 chars. Hidden files skipped.",
   execute: async (args: GrepArgs): Promise<ToolResult> => {
     const pattern = args.pattern;
     const searchPath = args.path ?? ".";
@@ -65,7 +65,7 @@ export const grepTool = {
           output = output.slice(0, MAX_SEARCH_OUTPUT_BYTES);
           const lastNl = output.lastIndexOf("\n");
           if (lastNl > 0) output = output.slice(0, lastNl);
-          output += `\n[output capped — narrow with glob or path params]`;
+          output += `\n[Output capped at 32KB. Use maxCount=N (default 50) for fewer hits per file, or narrow with glob/path to refine.]`;
         }
         if (code === 0 || code === 1) {
           res(output || "No matches found.");
@@ -92,7 +92,7 @@ export const grepTool = {
               out = out.slice(0, MAX_SEARCH_OUTPUT_BYTES);
               const lastNl = out.lastIndexOf("\n");
               if (lastNl > 0) out = out.slice(0, lastNl);
-              out += `\n[output capped — narrow with glob or path params]`;
+              out += `\n[Output capped at 32KB. Use maxCount=N (default 50) for fewer hits per file, or narrow with glob/path to refine.]`;
             }
             res(out);
           });

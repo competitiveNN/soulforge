@@ -142,8 +142,11 @@ async function readViaWorker(filePath: string, args: ReadFileArgs): Promise<Tool
       result.start + MAX_READ_LINES,
       result.totalLines,
     );
+    const nextOffset = result.start + MAX_READ_LINES + 1;
+    const remaining = result.totalLines - result.start - MAX_READ_LINES;
     output +=
-      outline || `\n... ${String(result.totalLines - result.start - MAX_READ_LINES)} more lines.`;
+      outline ||
+      `\n... ${String(remaining)} more lines. Use ranges:[{start:${String(nextOffset)}, end:N}] to continue.`;
   }
   return { success: true, output };
 }

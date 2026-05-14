@@ -37,10 +37,11 @@ export const multiEditTool = {
   name: "multi_edit",
   description:
     "Apply multiple edits to a single non-TS/JS file atomically (JSON, YAML, Markdown, config, raw text). For TS/JS files use ast_edit with operations:[...] — safer and no line drift. " +
-    "All-or-nothing: if any edit fails, ZERO edits are applied. " +
-    "lineStart values reference the ORIGINAL file (pre-edit) — the tool tracks cumulative line offsets internally. " +
-    "Provide lineStart (1-indexed) for reliable line-anchored matching. Without it, falls back to string matching against evolved content. " +
-    "The range is derived from oldString line count.",
+    "All-or-nothing: if any edit fails, ZERO edits are applied. lineStart values reference the ORIGINAL file (pre-edit) — the tool tracks cumulative line offsets internally. " +
+    "Provide lineStart (1-indexed) for reliable line-anchored matching. Without it, falls back to string matching against evolved content. The range is derived from oldString line count. " +
+    "Each oldString is matched against the ORIGINAL file content, not against the result of earlier edits in the batch — do not emit overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into ONE edit. " +
+    "Keep each oldString minimal and unique. Don't pad with large unchanged regions just to span distant changes. " +
+    "If the call atomically rolls back, re-read the file and retry ALL edits with fresh content.",
   execute: async (args: MultiEditArgs): Promise<ToolResult> => {
     try {
       const filePath = resolve(args.path);

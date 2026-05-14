@@ -217,8 +217,8 @@ export const editFileTool = {
   description:
     "Edit a non-TS/JS file by replacing content (JSON, YAML, Markdown, config, raw text). For .ts/.tsx/.js/.jsx/.mts/.cts/.mjs/.cjs files use ast_edit — it's safer and won't drift. " +
     "Read first, then provide path, oldString, newString. " +
-    "Provide lineStart (1-indexed from read output) for reliable line-anchored matching — " +
-    "the range is derived from oldString line count. Without lineStart, falls back to string matching (fails if ambiguous). " +
+    "Provide lineStart (1-indexed from read output) for reliable line-anchored matching — the range is derived from oldString line count. Without lineStart, falls back to string matching (fails if ambiguous). " +
+    "Keep oldString minimal and unique in the file — don't pad with large unchanged regions just to anchor a small change. " +
     "Empty oldString creates a new file. Use multi_edit for multiple changes to the same file. " +
     "Edits are applied immediately.",
   execute: async (args: EditFileArgs): Promise<ToolResult> => {
