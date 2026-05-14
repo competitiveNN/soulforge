@@ -1,8 +1,8 @@
 import { createGroq } from "@ai-sdk/groq";
 import { loadConfig } from "../../../config/index.js";
 import { getCompatReasoningBody } from "../compat-reasoning.js";
-import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
 import { getPooledApiKey } from "../credential-pool.js";
+import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 interface GroqModel {

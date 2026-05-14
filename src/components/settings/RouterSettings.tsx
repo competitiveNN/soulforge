@@ -5,8 +5,8 @@ import type { TaskRouter } from "../../types/index.js";
 import type { ConfigScope } from "../layout/shared.js";
 import { CONFIG_SCOPES } from "../layout/shared.js";
 import {
-  handleCursorNavKey,
   Hint,
+  handleCursorNavKey,
   PremiumPopup,
   Section,
   SegmentedControl,

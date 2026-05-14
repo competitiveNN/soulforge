@@ -1,8 +1,8 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { loadConfig } from "../../../config/index.js";
 import { getCompatReasoningBody } from "../compat-reasoning.js";
-import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
 import { getPooledApiKey } from "../credential-pool.js";
+import { createReasoningFetchWrapper } from "./reasoning-fetch.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 const ENV_VAR = "GITHUB_MODELS_API_KEY";

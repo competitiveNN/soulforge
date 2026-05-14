@@ -6,6 +6,7 @@ import { logBackgroundError } from "../../stores/errors.js";
 import { useRepoMapStore } from "../../stores/repomap.js";
 import type { EditorIntegration, ForgeMode, TaskRouter } from "../../types/index.js";
 import { toErrorMessage } from "../../utils/errors.js";
+import { getCachedInstructionsSize } from "../agents/forge.js";
 import { setNeovimFileWrittenHandler } from "../editor/neovim.js";
 import { setIntelligenceClient } from "../intelligence/instance.js";
 import type { SymbolForSummary } from "../intelligence/repo-map.js";
@@ -19,7 +20,6 @@ import {
   getModeInstructions,
   type PromptBuilderOptions,
 } from "../prompts/index.js";
-import { getCachedInstructionsSize } from "../agents/forge.js";
 // buildForbiddenContext removed from system prompt — gates enforce at tool level
 import { emitFileEdited, onFileEdited, onFileRead } from "../tools/file-events.js";
 import { IntelligenceClient } from "../workers/intelligence-client.js";
