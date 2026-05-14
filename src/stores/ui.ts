@@ -78,6 +78,8 @@ const INITIAL_MODALS: Modals = {
 interface UIState {
   modals: Modals;
   routerSlotPicking: keyof TaskRouter | null;
+  /** Model ID we're currently adding a fallback to (null = not picking) */
+  fallbackForModel: string | null;
   commandPickerConfig: CommandPickerConfig | null;
   infoPopupConfig: InfoPopupConfig | null;
   statusDashboardTab: "Context" | "System" | "Dispatch";
@@ -97,6 +99,7 @@ interface UIState {
   toggleModal: (name: ModalName) => void;
 
   setRouterSlotPicking: (slot: keyof TaskRouter | null) => void;
+  setFallbackForModel: (modelId: string | null) => void;
 
   openCommandPicker: (config: CommandPickerConfig) => void;
   updatePickerOptions: (options: CommandPickerConfig["options"], currentValue?: string) => void;
@@ -124,6 +127,7 @@ export const useUIStore = create<UIState>()(
   subscribeWithSelector((set) => ({
     modals: { ...INITIAL_MODALS },
     routerSlotPicking: null,
+    fallbackForModel: null,
     commandPickerConfig: null,
     infoPopupConfig: null,
     statusDashboardTab: "Context" as const as "Context" | "System" | "Dispatch",
@@ -148,6 +152,7 @@ export const useUIStore = create<UIState>()(
       })),
 
     setRouterSlotPicking: (slot) => set({ routerSlotPicking: slot }),
+    setFallbackForModel: (modelId) => set({ fallbackForModel: modelId }),
 
     openCommandPicker: (config) =>
       set(() => ({

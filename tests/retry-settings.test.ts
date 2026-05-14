@@ -27,61 +27,100 @@ beforeEach(() => {
 describe("resolveRetrySettings — missing/empty input falls back to defaults", () => {
 	test("undefined → defaults (chat)", () => {
 		expect(resolveRetrySettings(undefined)).toEqual({
-			maxRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});
 
 	test("null → defaults (chat)", () => {
 		expect(resolveRetrySettings(null)).toEqual({
-			maxRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});
 
 	test("empty object → defaults (chat)", () => {
 		expect(resolveRetrySettings({})).toEqual({
-			maxRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});
 
 	test("agent preset uses 2000ms base delay", () => {
 		expect(resolveRetrySettings(undefined, { agent: true })).toEqual({
-			maxRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
 			baseDelayMs: DEFAULT_AGENT_BASE_DELAY_MS,
 		});
 	});
 
 	test("individual undefined fields fall back per-field", () => {
 		expect(resolveRetrySettings({ maxAttempts: 7 })).toEqual({
-			maxRetries: 7,
+			maxTransientRetries: 7,
+			maxStallRetries: 7,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 		expect(resolveRetrySettings({ baseDelayMs: 5000 })).toEqual({
-			maxRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
 			baseDelayMs: 5000,
 		});
+	});
+});
+
+describe("resolveRetrySettings — back-compat maxAttempts → both retries", () => {
+	test("maxAttempts sets both transient + stall when neither override present", () => {
+		const r = resolveRetrySettings({ maxAttempts: 5 });
+		expect(r.maxTransientRetries).toBe(5);
+		expect(r.maxStallRetries).toBe(5);
+	});
+
+	test("maxTransientRetries overrides maxAttempts for transient only", () => {
+		const r = resolveRetrySettings({ maxAttempts: 5, maxTransientRetries: 8 });
+		expect(r.maxTransientRetries).toBe(8);
+		expect(r.maxStallRetries).toBe(5);
+	});
+
+	test("maxStallRetries overrides maxAttempts for stall only", () => {
+		const r = resolveRetrySettings({ maxAttempts: 5, maxStallRetries: 2 });
+		expect(r.maxTransientRetries).toBe(5);
+		expect(r.maxStallRetries).toBe(2);
+	});
+
+	test("both overrides set — maxAttempts ignored", () => {
+		const r = resolveRetrySettings({
+			maxAttempts: 5,
+			maxTransientRetries: 8,
+			maxStallRetries: 2,
+		});
+		expect(r.maxTransientRetries).toBe(8);
+		expect(r.maxStallRetries).toBe(2);
 	});
 });
 
 describe("resolveRetrySettings — happy path within range", () => {
 	test("exact valid values pass through", () => {
 		expect(resolveRetrySettings({ maxAttempts: 5, baseDelayMs: 3000 })).toEqual({
-			maxRetries: 5,
+			maxTransientRetries: 5,
+			maxStallRetries: 5,
 			baseDelayMs: 3000,
 		});
 	});
 
 	test("fractional numbers round to nearest int", () => {
 		const r = resolveRetrySettings({ maxAttempts: 4.7, baseDelayMs: 1999.4 });
-		expect(r.maxRetries).toBe(5);
+		expect(r.maxTransientRetries).toBe(5);
+		expect(r.maxStallRetries).toBe(5);
 		expect(r.baseDelayMs).toBe(1999);
 	});
 
 	test("range minimums preserved", () => {
 		expect(resolveRetrySettings({ maxAttempts: MIN_MAX_ATTEMPTS })).toMatchObject({
-			maxRetries: MIN_MAX_ATTEMPTS,
+			maxTransientRetries: MIN_MAX_ATTEMPTS,
+			maxStallRetries: MIN_MAX_ATTEMPTS,
 		});
 		expect(resolveRetrySettings({ baseDelayMs: MIN_BASE_DELAY_MS })).toMatchObject({
 			baseDelayMs: MIN_BASE_DELAY_MS,
@@ -89,8 +128,8 @@ describe("resolveRetrySettings — happy path within range", () => {
 	});
 
 	test("large maxAttempts passes through (no upper cap)", () => {
-		expect(resolveRetrySettings({ maxAttempts: 99 }).maxRetries).toBe(99);
-		expect(resolveRetrySettings({ maxAttempts: 500 }).maxRetries).toBe(500);
+		expect(resolveRetrySettings({ maxAttempts: 99 }).maxTransientRetries).toBe(99);
+		expect(resolveRetrySettings({ maxAttempts: 500 }).maxTransientRetries).toBe(500);
 	});
 
 	test("baseDelayMs range maximum preserved", () => {
@@ -102,9 +141,9 @@ describe("resolveRetrySettings — happy path within range", () => {
 
 describe("resolveRetrySettings — clamps out-of-range numbers", () => {
 	test("maxAttempts below min clamps up", () => {
-		expect(resolveRetrySettings({ maxAttempts: 0 }).maxRetries).toBe(MIN_MAX_ATTEMPTS);
-		expect(resolveRetrySettings({ maxAttempts: -1 }).maxRetries).toBe(MIN_MAX_ATTEMPTS);
-		expect(resolveRetrySettings({ maxAttempts: -9999 }).maxRetries).toBe(MIN_MAX_ATTEMPTS);
+		expect(resolveRetrySettings({ maxAttempts: 0 }).maxTransientRetries).toBe(MIN_MAX_ATTEMPTS);
+		expect(resolveRetrySettings({ maxAttempts: -1 }).maxTransientRetries).toBe(MIN_MAX_ATTEMPTS);
+		expect(resolveRetrySettings({ maxAttempts: -9999 }).maxTransientRetries).toBe(MIN_MAX_ATTEMPTS);
 	});
 
 	test("baseDelayMs below min clamps up", () => {
@@ -124,7 +163,8 @@ describe("resolveRetrySettings — clamps out-of-range numbers", () => {
 describe("resolveRetrySettings — garbage inputs never throw and fall back", () => {
 	test("NaN → default", () => {
 		const r = resolveRetrySettings({ maxAttempts: NaN, baseDelayMs: NaN });
-		expect(r.maxRetries).toBe(DEFAULT_MAX_RETRIES);
+		expect(r.maxTransientRetries).toBe(DEFAULT_MAX_RETRIES);
+		expect(r.maxStallRetries).toBe(DEFAULT_MAX_RETRIES);
 		expect(r.baseDelayMs).toBe(DEFAULT_CHAT_BASE_DELAY_MS);
 	});
 
@@ -132,55 +172,58 @@ describe("resolveRetrySettings — garbage inputs never throw and fall back", ()
 		expect(
 			resolveRetrySettings({ maxAttempts: Infinity, baseDelayMs: Infinity }),
 		).toEqual({
-			maxRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 		expect(
 			resolveRetrySettings({ maxAttempts: -Infinity, baseDelayMs: -Infinity }),
 		).toEqual({
-			maxRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});
 
 	test("string values → default (no coercion)", () => {
-		// User might write `"maxAttempts": "5"` by hand in JSON
 		// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 		const r = resolveRetrySettings({ maxAttempts: "5", baseDelayMs: "3000" } as any);
-		expect(r.maxRetries).toBe(DEFAULT_MAX_RETRIES);
+		expect(r.maxTransientRetries).toBe(DEFAULT_MAX_RETRIES);
 		expect(r.baseDelayMs).toBe(DEFAULT_CHAT_BASE_DELAY_MS);
 	});
 
 	test("boolean values → default", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 		const r = resolveRetrySettings({ maxAttempts: true, baseDelayMs: false } as any);
-		expect(r.maxRetries).toBe(DEFAULT_MAX_RETRIES);
+		expect(r.maxTransientRetries).toBe(DEFAULT_MAX_RETRIES);
 		expect(r.baseDelayMs).toBe(DEFAULT_CHAT_BASE_DELAY_MS);
 	});
 
 	test("null fields → default (not 0)", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 		const r = resolveRetrySettings({ maxAttempts: null, baseDelayMs: null } as any);
-		expect(r.maxRetries).toBe(DEFAULT_MAX_RETRIES);
+		expect(r.maxTransientRetries).toBe(DEFAULT_MAX_RETRIES);
 		expect(r.baseDelayMs).toBe(DEFAULT_CHAT_BASE_DELAY_MS);
 	});
 
 	test("nested object / array → default", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 		const r = resolveRetrySettings({ maxAttempts: { n: 5 }, baseDelayMs: [1000] } as any);
-		expect(r.maxRetries).toBe(DEFAULT_MAX_RETRIES);
+		expect(r.maxTransientRetries).toBe(DEFAULT_MAX_RETRIES);
 		expect(r.baseDelayMs).toBe(DEFAULT_CHAT_BASE_DELAY_MS);
 	});
 
 	test("whole raw input as non-object → defaults", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 		expect(resolveRetrySettings("broken" as any)).toEqual({
-			maxRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 		// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 		expect(resolveRetrySettings(42 as any)).toEqual({
-			maxRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});
@@ -188,7 +231,7 @@ describe("resolveRetrySettings — garbage inputs never throw and fall back", ()
 	test("extra unknown keys are ignored", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 		const r = resolveRetrySettings({ maxAttempts: 5, hacker: "value" } as any);
-		expect(r.maxRetries).toBe(5);
+		expect(r.maxTransientRetries).toBe(5);
 		expect(r.baseDelayMs).toBe(DEFAULT_CHAT_BASE_DELAY_MS);
 	});
 
@@ -212,11 +255,11 @@ describe("resolveRetrySettings — garbage inputs never throw and fall back", ()
 			expect(() => {
 				// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 				const r = resolveRetrySettings(input as any);
-				// Invariants the retry loop depends on:
-				expect(Number.isFinite(r.maxRetries)).toBe(true);
+				expect(Number.isFinite(r.maxTransientRetries)).toBe(true);
+				expect(Number.isFinite(r.maxStallRetries)).toBe(true);
 				expect(Number.isFinite(r.baseDelayMs)).toBe(true);
-				expect(r.maxRetries).toBeGreaterThanOrEqual(MIN_MAX_ATTEMPTS);
-				expect(r.maxRetries).toBeGreaterThanOrEqual(MIN_MAX_ATTEMPTS);
+				expect(r.maxTransientRetries).toBeGreaterThanOrEqual(MIN_MAX_ATTEMPTS);
+				expect(r.maxStallRetries).toBeGreaterThanOrEqual(MIN_MAX_ATTEMPTS);
 				expect(r.baseDelayMs).toBeGreaterThanOrEqual(MIN_BASE_DELAY_MS);
 				expect(r.baseDelayMs).toBeLessThanOrEqual(MAX_BASE_DELAY_MS);
 			}).not.toThrow();
@@ -226,13 +269,10 @@ describe("resolveRetrySettings — garbage inputs never throw and fall back", ()
 
 describe("resolveRetrySettings — backoff math stays bounded", () => {
 	test("worst-case exponential delay at maxRetries never overflows", () => {
-		// The retry loop computes: baseDelayMs * 2^attempt + jitter.
-		// With our clamps, the final retry's delay is bounded.
 		const { baseDelayMs } = resolveRetrySettings({
 			maxAttempts: 100,
 			baseDelayMs: 10 ** 9,
 		});
-		// baseDelayMs clamped to 60s, maxAttempts passes through as 100
 		const worstCase = baseDelayMs * 2 ** 99;
 		expect(Number.isFinite(worstCase)).toBe(true);
 		expect(worstCase).toBeGreaterThan(0);

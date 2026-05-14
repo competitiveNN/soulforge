@@ -867,7 +867,7 @@ export function createForgeAgent({
     },
   } as ProviderOptions;
 
-  const { maxRetries: retryMaxRetries } = resolveRetrySettings(loadConfig().retry);
+  const { maxTransientRetries: retryMaxRetries } = resolveRetrySettings(loadConfig().retry);
 
   return new ToolLoopAgent({
     id: "forge",

@@ -372,7 +372,7 @@ export async function runAgentTask(
   let attemptsMade = 0;
   let proxyBounced = false;
   let lastAttemptStartedAt = Date.now();
-  const { maxRetries: MAX_RETRIES, baseDelayMs: BASE_DELAY_MS } = resolveRetrySettings(
+  const { maxTransientRetries: MAX_RETRIES, baseDelayMs: BASE_DELAY_MS } = resolveRetrySettings(
     loadConfig().retry,
     { agent: true },
   );

@@ -36,7 +36,7 @@ import {
   getModelContextWindow,
   getShortModelLabel,
 } from "../core/llm/models.js";
-import { getActiveProviderId, resolveModel } from "../core/llm/provider.js";
+import { getActiveProviderId, notifyProviderSwitch, resolveModel } from "../core/llm/provider.js";
 import {
   buildProviderOptions,
   degradeProviderOptions,
@@ -194,6 +194,8 @@ export interface UseChatOptions {
   initialState?: TabState;
   getWorkspaceSnapshot?: () => WorkspaceSnapshot;
   visible?: boolean;
+  /** Called when the active model changes due to a fallback swap. */
+  onModelChange?: (modelId: string) => void;
 }
 
 export interface ChatInstance {
@@ -264,6 +266,7 @@ export function useChat({
   initialState,
   getWorkspaceSnapshot,
   visible = true,
+  onModelChange,
 }: UseChatOptions): ChatInstance {
   const [messages, setMessages] = useState<ChatMessage[]>(initialState?.messages ?? []);
   const [coreMessages, setCoreMessages] = useState<ModelMessage[]>(
@@ -420,6 +423,7 @@ export function useChat({
   // tap Allow/Deny, which is not stream inactivity.
   const remoteApprovalActiveRef = useRef(0);
   const webSearchModelLabelRef = useRef<string | null>(null);
+  const userAbortedRef = useRef(false);
   const [activePlan, setActivePlanRaw] = useState<Plan | null>(initialState?.activePlan ?? null);
   const activePlanRef = useRef<Plan | null>(activePlan);
   const setActivePlan = useCallback<typeof setActivePlanRaw>((v) => {
@@ -1910,19 +1914,28 @@ export function useChat({
 
       // Stream stall watchdog — hoisted so catch/finally can access.
       // Initialized after stream starts; no-ops if stream never starts.
-      const STALL_MAX_RETRIES = resolveRetrySettings(effectiveConfig.retry).maxRetries;
+      const {
+        maxTransientRetries: MAX_TRANSIENT_RETRIES,
+        maxStallRetries: STALL_MAX_RETRIES,
+        baseDelayMs: RETRY_BASE_DELAY_MS,
+      } = resolveRetrySettings(effectiveConfig.retry);
       let stallWatchdog: ReturnType<typeof setInterval> | null = null;
       let unsubStallWatch1: (() => void) | null = null;
       let unsubStallWatch2: (() => void) | null = null;
       let unsubStallWatch3: (() => void) | null = null;
-      let userAborted = false;
       let stallTriggered = false; // only true when the watchdog itself fires
       let stallAborted = false; // true when abort is from stall watchdog
-      // Resolve retry settings once at handleSubmit scope so they're accessible
-      // in both the retry loop AND the outer catch block for streaming errors.
-      const { maxRetries: MAX_TRANSIENT_RETRIES, baseDelayMs: RETRY_BASE_DELAY_MS } =
-        resolveRetrySettings(effectiveConfig.retry);
       let streamRetryCount = 0; // local retry counter (not a ref)
+      // Model fallback: per-model fallback chains
+      const rawFallback = effectiveConfig.modelFallback;
+      const fallbackModels: string[] =
+        rawFallback && typeof rawFallback === "object" && !Array.isArray(rawFallback)
+          ? (rawFallback[activeModelRef.current] ?? []).filter((m) => m && m.trim().length > 0)
+          : [];
+      let fallbackIndex = -1; // -1 = primary, 0+ = index into fallbackModels
+      const primaryModelId = activeModelRef.current;
+      let cycleCount = 0;
+      const MAX_CYCLES = 3;
       let lengthRetryCount = 0; // bounded auto-continue on finishReason=length
       const MAX_LENGTH_RETRIES = 2;
       // Reset retry count on real user messages (not auto-retry "Continue.")
@@ -1936,6 +1949,7 @@ export function useChat({
       for (;;) {
         // Reset state for retry
         let proxyBounced = false;
+        userAbortedRef.current = false;
         abortController = new AbortController();
         abortRef.current = abortController;
         fullText = "";
@@ -2388,7 +2402,7 @@ export function useChat({
           const onUserAbort = () => {
             // Only mark as user-aborted if the abort wasn't from the stall watchdog.
             if (!stallAborted) {
-              userAborted = true;
+              userAbortedRef.current = true;
             }
           };
           abortController.signal.addEventListener("abort", onUserAbort, { once: true });
@@ -2990,7 +3004,7 @@ export function useChat({
           // If the watchdog fired but the stream ended gracefully (some providers
           // close the stream instead of throwing on abort), re-throw so the catch
           // block's auto-retry logic kicks in.
-          if (stallTriggered && abortController.signal.aborted && !userAborted) {
+          if (stallTriggered && abortController.signal.aborted && !userAbortedRef.current) {
             throw new Error("Stream stall — abort did not throw");
           }
 
@@ -3264,7 +3278,7 @@ export function useChat({
           const isStallRetry =
             isAbort &&
             stallTriggered &&
-            !userAborted &&
+            !userAbortedRef.current &&
             stallRetryCountRef.current <= STALL_MAX_RETRIES;
 
           // Retry on transient errors during streaming (e.g. "socket connection closed unexpectedly")
@@ -3359,6 +3373,53 @@ export function useChat({
                 await new Promise((resolve) => setTimeout(resolve, backoffDelay));
                 continue;
               }
+            }
+            // Transient retries for current model exhausted — swap to next fallback.
+            // User abort (Ctrl-X) always wins.
+            if (userAbortedRef.current) {
+              // fall through to stall/error path
+            } else if (fallbackIndex < fallbackModels.length - 1) {
+              fallbackIndex++;
+              const nextModel = fallbackModels[fallbackIndex] as string;
+              activeModelRef.current = nextModel;
+              streamRetryCount = 0;
+              notifyProviderSwitch(nextModel).catch(() => {});
+              setActiveModel(nextModel);
+              onModelChange?.(nextModel);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: "system",
+                  content: `Switched to fallback model: ${nextModel}`,
+                  timestamp: Date.now(),
+                },
+              ]);
+              continue;
+            } else if (fallbackModels.length > 0) {
+              cycleCount++;
+              if (cycleCount > MAX_CYCLES) {
+                throw new Error(
+                  `Exhausted ${String(MAX_CYCLES)} cycles of model fallbacks. Last error: ${msg}`,
+                  { cause: err },
+                );
+              }
+              fallbackIndex = -1;
+              activeModelRef.current = primaryModelId;
+              streamRetryCount = 0;
+              notifyProviderSwitch(primaryModelId).catch(() => {});
+              setActiveModel(primaryModelId);
+              onModelChange?.(primaryModelId);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: "system",
+                  content: `All fallbacks exhausted, retrying primary model: ${primaryModelId} (cycle ${String(cycleCount)}/${String(MAX_CYCLES)})`,
+                  timestamp: Date.now(),
+                },
+              ]);
+              continue;
             }
           }
 
@@ -3465,8 +3526,6 @@ export function useChat({
               cwd,
             }).catch(() => {});
           }
-          const isTransientStream =
-            /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(rawMsg);
           const errObj =
             err != null && typeof err === "object" ? (err as Record<string, unknown>) : null;
           const apiBody =
@@ -3477,6 +3536,11 @@ export function useChat({
             errObj?.data != null ? JSON.stringify(errObj.data).slice(0, 500) : undefined;
           const detail = apiBody?.slice(0, 500) ?? apiData;
           const enrichedMsg = detail ? `${rawMsg} · ${detail}` : rawMsg;
+          // 403 is only transient when the response body indicates rate-limit /
+          // overload — a real auth-rejection 403 must not burn the retry budget.
+          const isTransientStream =
+            /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(rawMsg) ||
+            (/403/i.test(rawMsg) && /overloaded|rate/i.test(apiBody ?? ""));
           const errorMsg = isTransientStream
             ? `Provider returned a transient error (${rawMsg.slice(0, 120)}). Please retry.`
             : enrichedMsg;
@@ -3806,6 +3870,7 @@ export function useChat({
       tabId,
       tabLabel,
       setForgeMode,
+      onModelChange,
     ],
   );
   handleSubmitRef.current = handleSubmit;
@@ -3831,6 +3896,9 @@ export function useChat({
       ]);
       // Don't return — also kill any concurrent generation below
     }
+    // Set userAborted immediately so Ctrl-X is always recognized,
+    // even if the inner onUserAbort handler isn't yet registered.
+    userAbortedRef.current = true;
     if (abortRef.current) {
       const pq = pendingQuestionRef.current;
       if (pq) {
