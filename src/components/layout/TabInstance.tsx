@@ -62,7 +62,6 @@ interface TabInstanceProps {
   onSuspend: (opts: { command: string; args?: string[]; noAltScreen?: boolean }) => void;
   onCommand: (input: string, chat: ChatInstance) => void;
   onModeChange?: (mode: import("../../types/index.js").ForgeMode) => void;
-  onModelChange?: (modelId: string) => void;
   onExit: () => void;
   registerChat: (id: string, chat: ChatInstance) => void;
   unregisterChat: (id: string) => void;
@@ -111,7 +110,6 @@ export const TabInstance = memo(function TabInstance({
   onSuspend,
   onCommand,
   onModeChange,
-  onModelChange,
   onExit,
   registerChat,
   unregisterChat,
@@ -221,7 +219,6 @@ export const TabInstance = memo(function TabInstance({
     initialState,
     getWorkspaceSnapshot,
     visible,
-    onModelChange,
   });
 
   // Sync coAuthorCommits from config

@@ -5,13 +5,13 @@ import type { TaskRouter } from "../../types/index.js";
 import type { ConfigScope } from "../layout/shared.js";
 import { CONFIG_SCOPES } from "../layout/shared.js";
 import {
-   handleCursorNavKey,
-   Hint,
-   PremiumPopup,
-   Section,
-   SegmentedControl,
-   VSpacer,
- } from "../ui/index.js";
+  handleCursorNavKey,
+  Hint,
+  PremiumPopup,
+  Section,
+  SegmentedControl,
+  VSpacer,
+} from "../ui/index.js";
 
 const BOLD = 1;
 
@@ -42,11 +42,11 @@ interface PickerDef {
 type Def = SlotDef | PickerDef;
 
 interface SectionDef {
-   id: string;
-   title: string;
-   subtitle?: string;
-   defs: Def[];
- }
+  id: string;
+  title: string;
+  subtitle?: string;
+  defs: Def[];
+}
 
 const SECTIONS: SectionDef[] = [
   {
@@ -134,10 +134,7 @@ type Row =
 
 // --- Layout helpers ---
 
-const rowsFromSections = (
-  sections: SectionDef[],
-  fallbackRows: Row[],
-): Row[] => {
+const rowsFromSections = (sections: SectionDef[], fallbackRows: Row[]): Row[] => {
   const out: Row[] = [];
   for (const s of sections) {
     out.push({ kind: "header", section: s });
@@ -154,9 +151,7 @@ const rowsFromSections = (
 
 const selectableFromRows = (rows: Row[]): number[] =>
   rows
-    .map((r, i) =>
-      r.kind === "slot" || r.kind === "picker" || r.kind === "fallback" ? i : -1,
-    )
+    .map((r, i) => (r.kind === "slot" || r.kind === "picker" || r.kind === "fallback" ? i : -1))
     .filter((i) => i >= 0);
 
 // --- Component ---
@@ -253,7 +248,7 @@ export function RouterSettings({
     }
   }, [cursor, selectableIndices]);
 
-  const pickerDefs = useMemo(() => ALL_DEFS.filter((d): d is PickerDef => d.kind === 'picker'), []);
+  const pickerDefs = useMemo(() => ALL_DEFS.filter((d): d is PickerDef => d.kind === "picker"), []);
 
   const selectedRow = rows[cursor];
   const selectedSlot = selectedRow?.kind === "slot" ? selectedRow.def : null;
@@ -263,7 +258,7 @@ export function RouterSettings({
     ? (selectedRow as Row & { kind: "fallback" }).modelId
     : null;
 
-// --- Render helpers ---
+  // --- Render helpers ---
 
   useKeyboard((evt) => {
     if (!visible) return;
@@ -406,7 +401,9 @@ export function RouterSettings({
                   : "(no fallbacks)";
               const rowBg = isSelected ? t.bgPopupHighlight : t.bgPopup;
               const label = row.modelId.split("/").pop() ?? row.modelId;
-              const desc = truncate(`→ ${fallbackLabels}`, descCol).padEnd(descCol).slice(0, descCol);
+              const desc = truncate(`→ ${fallbackLabels}`, descCol)
+                .padEnd(descCol)
+                .slice(0, descCol);
               return (
                 <box
                   // biome-ignore lint/suspicious/noArrayIndexKey: stable row layout
@@ -415,7 +412,11 @@ export function RouterSettings({
                   height={1}
                   backgroundColor={rowBg}
                 >
-                  <text bg={rowBg} fg={isSelected ? t.brandSecondary : t.textFaint} attributes={BOLD}>
+                  <text
+                    bg={rowBg}
+                    fg={isSelected ? t.brandSecondary : t.textFaint}
+                    attributes={BOLD}
+                  >
                     {isSelected ? "▸ " : "  "}
                   </text>
                   <text bg={rowBg} fg={t.textPrimary} attributes={BOLD}>
@@ -470,8 +471,8 @@ export function RouterSettings({
         <VSpacer />
         {pickerDefs.map((def) => {
           const cur = router?.[def.key];
-const num = typeof cur === "number" ? cur : def.defaultValue;
-           return (
+          const num = typeof cur === "number" ? cur : def.defaultValue;
+          return (
             <SegmentedControl
               key={def.key}
               label={def.label}

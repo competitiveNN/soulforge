@@ -1362,9 +1362,9 @@ export function App({
       effectiveConfig.agentFeatures,
       effectiveConfig.instructionFiles,
       handleNewSession,
-       effectiveConfig.watchdog,
-       effectiveConfig.retryOn403,
-       syncActiveModel,
+      effectiveConfig.watchdog,
+      effectiveConfig.retryOn403,
+      syncActiveModel,
     ],
   );
 
@@ -1552,7 +1552,6 @@ export function App({
             onSuspend={handleSuspend}
             onCommand={handleTabCommand}
             onModeChange={setForgeModeHeader}
-            onModelChange={syncActiveModel}
             onExit={handleExit}
             registerChat={tabMgr.registerChat}
             unregisterChat={tabMgr.unregisterChat}

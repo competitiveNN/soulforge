@@ -606,7 +606,6 @@ export function CommandPicker({ visible, config, onClose }: Props) {
                 key={option.value}
                 option={option}
                 isActive={vi + clampedOffset === cursor}
-
                 isCurrent={
                   config.currentValue
                     ? Array.isArray(config.currentValue)
@@ -614,7 +613,7 @@ export function CommandPicker({ visible, config, onClose }: Props) {
                       : option.value === config.currentValue
                     : false
                 }
-                  innerW={innerW}
+                innerW={innerW}
                 popupBg={POPUP_BG}
                 popupHl={POPUP_HL}
                 brandSecondary={t.brandSecondary}
