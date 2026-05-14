@@ -62,7 +62,7 @@ import { onToolProgress } from "../core/tools/tool-progress.js";
 import { getIOClient } from "../core/workers/io-client.js";
 import { logCompaction } from "../stores/compaction-logs.js";
 import { logBackgroundError } from "../stores/errors.js";
-import { recordModelCall, useModelEventsStore } from "../stores/model-events.js";
+import { recordModelCall } from "../stores/model-events.js";
 import { useRepoMapStore } from "../stores/repomap.js";
 import { accumulateModelUsage, useStatusBarStore, ZERO_USAGE } from "../stores/statusbar.js";
 import { useToolsStore } from "../stores/tools.js";
@@ -1059,20 +1059,18 @@ export function useChat({
               cacheWriteTokens: v1Details?.cacheWriteTokens ?? 0,
             };
           }
-          if (useModelEventsStore.getState().enabled) {
-            recordModelCall({
-              modelId: compactModelId,
-              source: "compaction",
-              startedAt: compactStartedAt,
-              durationMs: Math.max(0, Date.now() - compactStartedAt),
-              state: "ok",
-              tabId,
-              input: compactUsage?.inputTokens ?? 0,
-              output: compactUsage?.outputTokens ?? 0,
-              cacheRead: compactUsage?.cacheReadTokens ?? 0,
-              cacheWrite: compactUsage?.cacheWriteTokens ?? 0,
-            });
-          }
+          recordModelCall({
+            modelId: compactModelId,
+            source: "compaction",
+            startedAt: compactStartedAt,
+            durationMs: Math.max(0, Date.now() - compactStartedAt),
+            state: "ok",
+            tabId,
+            input: compactUsage?.inputTokens ?? 0,
+            output: compactUsage?.outputTokens ?? 0,
+            cacheRead: compactUsage?.cacheReadTokens ?? 0,
+            cacheWrite: compactUsage?.cacheWriteTokens ?? 0,
+          });
         }
 
         if (!summary || summary.trim().length < 50) {
@@ -2375,7 +2373,6 @@ export function useChat({
           let gotFirstContent = false;
           let betweenSteps = false; // true after finish-step until next start-step
           let stepStartedAt = 0;
-          const meEnabled = useModelEventsStore.getState().enabled;
           const markActivity = () => {
             lastActivityTs = Date.now();
           };
@@ -2901,20 +2898,18 @@ export function useChat({
                   output: turnTokensRef.current.output + stepOut,
                   cacheRead: turnTokensRef.current.cacheRead + stepCache,
                 };
-                if (meEnabled) {
-                  recordModelCall({
-                    modelId,
-                    source: "main",
-                    startedAt: stepStartedAt || Date.now(),
-                    durationMs: stepStartedAt ? Math.max(0, Date.now() - stepStartedAt) : 0,
-                    state: "ok",
-                    tabId,
-                    input: stepIn,
-                    output: stepOut,
-                    cacheRead: stepCache,
-                    cacheWrite: stepCacheWrite,
-                  });
-                }
+                recordModelCall({
+                  modelId,
+                  source: "main",
+                  startedAt: stepStartedAt || Date.now(),
+                  durationMs: stepStartedAt ? Math.max(0, Date.now() - stepStartedAt) : 0,
+                  state: "ok",
+                  tabId,
+                  input: stepIn,
+                  output: stepOut,
+                  cacheRead: stepCache,
+                  cacheWrite: stepCacheWrite,
+                });
                 queueMicrotaskFlush();
 
                 if (completedCalls.length > 0 && Date.now() - lastIncrementalSave > 10_000) {
@@ -3486,7 +3481,7 @@ export function useChat({
             ? `Provider returned a transient error (${rawMsg.slice(0, 120)}). Please retry.`
             : enrichedMsg;
           const errorStack = !isTransientStream && err instanceof Error ? err.stack : undefined;
-          if (!isAbort && useModelEventsStore.getState().enabled) {
+          if (!isAbort) {
             recordModelCall({
               modelId: activeModelRef.current,
               source: "main",

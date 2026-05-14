@@ -45,6 +45,7 @@ export function useGlobalKeyboard({
         uiModals.floatingTerminal ||
         uiModals.firstRunWizard ||
         uiModals.mcpSettings ||
+        uiModals.modelEvents ||
         uiModals.tabNamePopup;
       if (evt.ctrl && evt.name === "c" && !hasOwnInput) {
         handleExit();

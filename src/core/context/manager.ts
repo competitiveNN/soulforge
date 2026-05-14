@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { generateText } from "ai";
 import { logBackgroundError } from "../../stores/errors.js";
-import { recordModelCall, useModelEventsStore } from "../../stores/model-events.js";
+import { recordModelCall } from "../../stores/model-events.js";
 import { useRepoMapStore } from "../../stores/repomap.js";
 import type { EditorIntegration, ForgeMode, TaskRouter } from "../../types/index.js";
 import { toErrorMessage } from "../../utils/errors.js";
@@ -1005,18 +1005,16 @@ export class ContextManager {
         (usage as { inputTokenDetails?: { cacheReadTokens?: number } }).inputTokenDetails
           ?.cacheReadTokens ?? 0;
       store.addSemanticTokens(usage.inputTokens ?? 0, usage.outputTokens ?? 0, cacheRead);
-      if (useModelEventsStore.getState().enabled) {
-        recordModelCall({
-          modelId,
-          source: "other",
-          startedAt: semStartedAt,
-          durationMs: Math.max(0, Date.now() - semStartedAt),
-          state: "ok",
-          input: usage.inputTokens ?? 0,
-          output: usage.outputTokens ?? 0,
-          cacheRead,
-        });
-      }
+      recordModelCall({
+        modelId,
+        source: "other",
+        startedAt: semStartedAt,
+        durationMs: Math.max(0, Date.now() - semStartedAt),
+        state: "ok",
+        input: usage.inputTokens ?? 0,
+        output: usage.outputTokens ?? 0,
+        cacheRead,
+      });
 
       for (const line of text.split("\n")) {
         const trimmed = line.trim();

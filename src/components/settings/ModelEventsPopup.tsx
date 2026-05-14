@@ -70,7 +70,9 @@ export function ModelEventsPopup({ visible, onClose }: Props) {
   const { width: termCols, height: termRows } = useTerminalDimensions();
   const popupW = Math.min(110, Math.max(80, Math.floor(termCols * 0.85)));
   const popupH = Math.min(Math.max(20, Math.floor(termRows * 0.82)), termRows - 2);
-  const contentW = popupW - 4;
+  const SIDEBAR_W = 16;
+  // popup border (2) + sidebar + Section paddingX*2 (4) = 22 cells of chrome
+  const contentW = Math.max(40, popupW - SIDEBAR_W - 6);
 
   const enabled = useModelEventsStore((s) => s.enabled);
   const events = useModelEventsStore((s) => s.events);
@@ -169,19 +171,19 @@ export function ModelEventsPopup({ visible, onClose }: Props) {
               width={contentW}
               columns={
                 [
-                  { key: "Model", width: 24, render: (r) => shortModel(r.modelId) },
-                  { key: "Calls", width: 7, align: "right", render: (r) => String(r.calls) },
+                  { key: "Model", render: (r) => shortModel(r.modelId) },
+                  { key: "Calls", width: 5, align: "right", render: (r) => String(r.calls) },
                   {
-                    key: "Errors",
-                    width: 7,
+                    key: "Err",
+                    width: 4,
                     align: "right",
                     render: (r) => (r.errors > 0 ? String(r.errors) : "—"),
                   },
-                  { key: "Avg", width: 8, align: "right", render: (r) => fmtMs(r.avgMs) },
-                  { key: "Last", width: 8, align: "right", render: (r) => fmtMs(r.lastMs) },
-                  { key: "In", width: 8, align: "right", render: (r) => fmtTok(r.input) },
-                  { key: "Out", width: 8, align: "right", render: (r) => fmtTok(r.output) },
-                  { key: "Cache", width: 8, align: "right", render: (r) => fmtTok(r.cacheRead) },
+                  { key: "Avg", width: 6, align: "right", render: (r) => fmtMs(r.avgMs) },
+                  { key: "Last", width: 6, align: "right", render: (r) => fmtMs(r.lastMs) },
+                  { key: "In", width: 6, align: "right", render: (r) => fmtTok(r.input) },
+                  { key: "Out", width: 6, align: "right", render: (r) => fmtTok(r.output) },
+                  { key: "Cache", width: 6, align: "right", render: (r) => fmtTok(r.cacheRead) },
                 ] as TableColumn<(typeof aggregates)[number]>[]
               }
               rows={aggregates}
@@ -200,17 +202,17 @@ export function ModelEventsPopup({ visible, onClose }: Props) {
               width={contentW}
               columns={
                 [
-                  { key: "When", width: 6, render: (r) => fmtAge(now, r.startedAt) },
-                  { key: "Source", width: 8, render: (r) => r.source },
-                  { key: "Model", width: 22, render: (r) => shortModel(r.modelId) },
+                  { key: "When", width: 5, render: (r) => fmtAge(now, r.startedAt) },
+                  { key: "Source", width: 7, render: (r) => r.source },
+                  { key: "Model", render: (r) => shortModel(r.modelId) },
                   {
-                    key: "Status",
-                    width: 8,
-                    render: (r) => (r.state === "error" ? "error" : "ok"),
+                    key: "State",
+                    width: 5,
+                    render: (r) => (r.state === "error" ? "err" : "ok"),
                   },
-                  { key: "Time", width: 8, align: "right", render: (r) => fmtMs(r.durationMs) },
-                  { key: "In", width: 7, align: "right", render: (r) => fmtTok(r.input ?? 0) },
-                  { key: "Out", width: 7, align: "right", render: (r) => fmtTok(r.output ?? 0) },
+                  { key: "Time", width: 6, align: "right", render: (r) => fmtMs(r.durationMs) },
+                  { key: "In", width: 6, align: "right", render: (r) => fmtTok(r.input ?? 0) },
+                  { key: "Out", width: 6, align: "right", render: (r) => fmtTok(r.output ?? 0) },
                 ] as TableColumn<ModelCallEvent>[]
               }
               rows={recent}

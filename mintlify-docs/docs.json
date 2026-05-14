@@ -76,6 +76,7 @@
               "concepts/intelligence",
               "concepts/compound-tools",
               "concepts/cost-tracking",
+              "concepts/model-events",
               "agents/dispatch",
               "agents/steering",
               "agents/cross-tab",
