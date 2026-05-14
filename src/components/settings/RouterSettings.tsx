@@ -43,6 +43,7 @@ type Def = SlotDef | PickerDef;
 interface SectionDef {
   id: string;
   title: string;
+  subtitle?: string;
   defs: Def[];
 }
 
@@ -118,6 +119,12 @@ const SECTIONS: SectionDef[] = [
       },
     ],
   },
+  {
+    id: "fallback",
+    title: "Model Fallback",
+    subtitle: "Per-model fallback chains for transient errors",
+    defs: [],
+  },
 ];
 
 const ALL_DEFS: Def[] = SECTIONS.flatMap((s) => s.defs);
@@ -125,24 +132,34 @@ const ALL_DEFS: Def[] = SECTIONS.flatMap((s) => s.defs);
 interface Props {
   visible: boolean;
   router: TaskRouter | undefined;
+  defaultModel: string;
+  modelFallback: Record<string, string[]> | undefined;
   activeModel: string;
   scope: ConfigScope;
   onScopeChange: (toScope: ConfigScope, fromScope: ConfigScope) => void;
   onPickSlot: (slot: keyof TaskRouter) => void;
   onClearSlot: (slot: keyof TaskRouter) => void;
   onPickerChange: (key: "maxConcurrentAgents", value: number) => void;
+  /** Add a fallback model to a specific model's fallback chain */
+  onAddFallback: (modelId: string) => void;
+  /** Clear all fallbacks for a model */
+  onClearFallbacks: (modelId: string) => void;
   onClose: () => void;
 }
 
 export function RouterSettings({
   visible,
   router,
+  defaultModel,
+  modelFallback,
   activeModel,
   scope,
   onScopeChange,
   onPickSlot,
   onClearSlot,
   onPickerChange,
+  onAddFallback,
+  onClearFallbacks,
   onClose,
 }: Props) {
   const t = useTheme();
@@ -153,27 +170,56 @@ export function RouterSettings({
   const popupH = Math.min(40, Math.max(26, th - 4));
   const contentW = popupW - 4;
 
+  // Models in use: default + every router slot model. Stable per-render.
+  const modelsInUse = useMemo(() => {
+    const set = new Set<string>();
+    if (defaultModel) set.add(defaultModel);
+    if (router) {
+      const keys: (keyof TaskRouter)[] = [
+        "default",
+        "spark",
+        "ember",
+        "webSearch",
+        "desloppify",
+        "verify",
+        "compact",
+        "semantic",
+      ];
+      for (const k of keys) {
+        const v = router[k];
+        if (typeof v === "string" && v.trim()) set.add(v);
+      }
+    }
+    return Array.from(set);
+  }, [router, defaultModel]);
+
   // Flatten sections into navigable rows: [section header, slot, …, picker, …]
   type Row =
     | { kind: "header"; section: SectionDef }
     | { kind: "slot"; section: SectionDef; def: SlotDef }
-    | { kind: "picker"; section: SectionDef; def: PickerDef };
+    | { kind: "picker"; section: SectionDef; def: PickerDef }
+    | { kind: "fallback"; section: SectionDef; modelId: string };
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
     for (const s of SECTIONS) {
       out.push({ kind: "header", section: s });
+      if (s.id === "fallback") {
+        for (const modelId of modelsInUse) {
+          out.push({ kind: "fallback", section: s, modelId });
+        }
+        continue;
+      }
       for (const d of s.defs) {
         if (d.kind === "slot") out.push({ kind: "slot", section: s, def: d });
         else out.push({ kind: "picker", section: s, def: d });
       }
     }
     return out;
-  }, []);
+  }, [modelsInUse]);
 
-  // Find indices of selectable rows (slots + pickers) so cursor skips headers.
+  // Find indices of selectable rows (slots + pickers + fallback rows) so cursor skips headers.
   const selectableIndices = useMemo(
-    () =>
-      rows.map((r, i) => (r.kind === "slot" || r.kind === "picker" ? i : -1)).filter((i) => i >= 0),
+    () => rows.map((r, i) => (r.kind === "header" ? -1 : i)).filter((i) => i >= 0),
     [rows],
   );
 
@@ -195,6 +241,7 @@ export function RouterSettings({
   const selectedRow = rows[cursor];
   const selectedSlot = selectedRow?.kind === "slot" ? selectedRow.def : null;
   const selectedPicker = selectedRow?.kind === "picker" ? selectedRow.def : null;
+  const selectedFallbackModelId = selectedRow?.kind === "fallback" ? selectedRow.modelId : null;
 
   useKeyboard((evt) => {
     if (!visible) return;
@@ -213,11 +260,13 @@ export function RouterSettings({
       return;
     }
     if (evt.name === "return") {
-      if (selectedSlot) onPickSlot(selectedSlot.key);
+      if (selectedFallbackModelId) onAddFallback(selectedFallbackModelId);
+      else if (selectedSlot) onPickSlot(selectedSlot.key);
       return;
     }
     if (evt.name === "d" || evt.name === "delete" || evt.name === "backspace") {
-      if (selectedSlot) onClearSlot(selectedSlot.key);
+      if (selectedFallbackModelId) onClearFallbacks(selectedFallbackModelId);
+      else if (selectedSlot) onClearSlot(selectedSlot.key);
       return;
     }
     if (evt.name === "left" || evt.name === "right") {
@@ -297,6 +346,48 @@ export function RouterSettings({
               );
             }
             const isSelected = idx === cursor;
+            if (row.kind === "fallback") {
+              const rowBg = isSelected ? t.bgPopupHighlight : t.bgPopup;
+              const fbs = modelFallback?.[row.modelId] ?? [];
+              const fbLabels =
+                fbs.length > 0
+                  ? fbs.map((m) => m.split("/").pop() ?? m).join(", ")
+                  : "(no fallbacks)";
+              const label = (row.modelId.split("/").pop() ?? row.modelId)
+                .padEnd(labelCol)
+                .slice(0, labelCol);
+              const desc = truncate(fbLabels, descCol).padEnd(descCol).slice(0, descCol);
+              return (
+                <box
+                  // biome-ignore lint/suspicious/noArrayIndexKey: stable row layout
+                  key={`f-${idx}`}
+                  flexDirection="row"
+                  height={1}
+                  backgroundColor={rowBg}
+                >
+                  <text
+                    bg={rowBg}
+                    fg={isSelected ? t.brandSecondary : t.textFaint}
+                    attributes={BOLD}
+                  >
+                    {isSelected ? "▸ " : "  "}
+                  </text>
+                  <text bg={rowBg} fg={t.textPrimary} attributes={BOLD}>
+                    {label}
+                  </text>
+                  <text bg={rowBg} fg={isSelected ? t.textSecondary : t.textMuted}>
+                    {desc}
+                  </text>
+                  <box flexGrow={1} backgroundColor={rowBg} />
+                  <text bg={rowBg} fg={fbs.length > 0 ? t.brandAlt : t.textDim} attributes={BOLD}>
+                    {fbs.length > 0
+                      ? `${String(fbs.length)} fallback${fbs.length === 1 ? "" : "s"}`
+                      : "—"}
+                  </text>
+                  <text bg={rowBg}>{"  "}</text>
+                </box>
+              );
+            }
             if (row.kind === "picker") {
               const cur = router?.[row.def.key];
               const num = typeof cur === "number" ? cur : row.def.defaultValue;

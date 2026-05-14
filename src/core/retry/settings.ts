@@ -10,7 +10,8 @@ export const MIN_BASE_DELAY_MS = 250;
 export const MAX_BASE_DELAY_MS = 60_000;
 
 export interface ResolvedRetrySettings {
-  maxRetries: number;
+  maxTransientRetries: number;
+  maxStallRetries: number;
   baseDelayMs: number;
 }
 
@@ -18,6 +19,8 @@ export interface ResolvedRetrySettings {
  * Pure, defensive resolver for user-supplied retry config.
  * - Accepts `undefined`, `null`, or garbage inputs (strings, NaN, Infinity, negatives) without throwing.
  * - Clamps valid numbers into safe ranges; falls back to defaults for anything else.
+ * - `maxAttempts` is kept as a back-compat default for both `maxTransientRetries`
+ *   and `maxStallRetries` — the per-purpose fields take precedence when set.
  */
 export function resolveRetrySettings(
   raw: RetryConfig | undefined | null,
@@ -26,11 +29,25 @@ export function resolveRetrySettings(
   const defaultBase = opts.agent ? DEFAULT_AGENT_BASE_DELAY_MS : DEFAULT_CHAT_BASE_DELAY_MS;
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
 
-  const maxRetries = clampIntMin(
+  const legacyMaxAttempts = clampIntMin(
     obj?.maxAttempts,
     MIN_MAX_ATTEMPTS,
     DEFAULT_MAX_RETRIES,
     "retry.maxAttempts",
+  );
+
+  const maxTransientRetries = clampIntMin(
+    obj?.maxTransientRetries,
+    MIN_MAX_ATTEMPTS,
+    legacyMaxAttempts,
+    "retry.maxTransientRetries",
+  );
+
+  const maxStallRetries = clampIntMin(
+    obj?.maxStallRetries,
+    MIN_MAX_ATTEMPTS,
+    legacyMaxAttempts,
+    "retry.maxStallRetries",
   );
 
   const baseDelayMs = clampInt(
@@ -41,7 +58,7 @@ export function resolveRetrySettings(
     "retry.baseDelayMs",
   );
 
-  return { maxRetries, baseDelayMs };
+  return { maxTransientRetries, maxStallRetries, baseDelayMs };
 }
 
 const warnedKeys = new Set<string>();

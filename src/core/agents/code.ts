@@ -96,7 +96,7 @@ export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions
     tabId: options?.tabId,
   });
 
-  const { maxRetries: retryMaxRetries } = resolveRetrySettings(loadConfig().retry, {
+  const { maxTransientRetries: retryMaxRetries } = resolveRetrySettings(loadConfig().retry, {
     agent: true,
   });
 

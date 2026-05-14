@@ -306,6 +306,12 @@ export type TaskTier = "spark" | "ember";
 
 export interface AppConfig {
   defaultModel: string;
+  /**
+   * Per-model fallback chains. When a model fails with transient errors,
+   * the fallbacks for THAT specific model are tried in order.
+   * Key = model ID, Value = ordered fallback model IDs.
+   */
+  modelFallback?: Record<string, string[]>;
   routerRules: RouterRule[];
   taskRouter?: TaskRouter;
   editor: {
@@ -399,8 +405,12 @@ export interface AppConfig {
 }
 
 export interface RetryConfig {
-  /** Max retry attempts per request. Default: 3. Range: 1–10. */
+  /** @deprecated Use maxTransientRetries / maxStallRetries. Still accepted as a default for both. */
   maxAttempts?: number;
+  /** Max retry attempts per request for transient errors (429, 529, 503, timeouts, overloaded). Default: 3. Range: 1–10. */
+  maxTransientRetries?: number;
+  /** Max retry attempts per request for stall detection (stream inactivity). Default: 3. Range: 1–10. */
+  maxStallRetries?: number;
   /** Base delay in ms before the first retry. Doubles each attempt + jitter. Default: 2000 (agents), 1000 (chat). Range: 250–60000. */
   baseDelayMs?: number;
 }

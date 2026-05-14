@@ -33,7 +33,7 @@ export function createWebSearchAgent(
   model: LanguageModel,
   opts?: { onApproveFetchPage?: (url: string) => Promise<boolean> },
 ) {
-  const { maxRetries: retryMaxRetries } = resolveRetrySettings(loadConfig().retry, {
+  const { maxTransientRetries: retryMaxRetries } = resolveRetrySettings(loadConfig().retry, {
     agent: true,
   });
 
