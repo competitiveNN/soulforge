@@ -4,6 +4,7 @@ import {
 	DEFAULT_AGENT_BASE_DELAY_MS,
 	DEFAULT_CHAT_BASE_DELAY_MS,
 	DEFAULT_MAX_RETRIES,
+	DEFAULT_MAX_TRANSIENT_RETRIES,
 	MAX_BASE_DELAY_MS,
 	MIN_BASE_DELAY_MS,
 	MIN_MAX_ATTEMPTS,
@@ -28,6 +29,8 @@ describe("resolveRetrySettings — missing/empty input falls back to defaults", 
 	test("undefined → defaults (chat)", () => {
 		expect(resolveRetrySettings(undefined)).toEqual({
 			maxRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});
@@ -35,6 +38,8 @@ describe("resolveRetrySettings — missing/empty input falls back to defaults", 
 	test("null → defaults (chat)", () => {
 		expect(resolveRetrySettings(null)).toEqual({
 			maxRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});
@@ -42,6 +47,8 @@ describe("resolveRetrySettings — missing/empty input falls back to defaults", 
 	test("empty object → defaults (chat)", () => {
 		expect(resolveRetrySettings({})).toEqual({
 			maxRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});
@@ -49,6 +56,8 @@ describe("resolveRetrySettings — missing/empty input falls back to defaults", 
 	test("agent preset uses 2000ms base delay", () => {
 		expect(resolveRetrySettings(undefined, { agent: true })).toEqual({
 			maxRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: DEFAULT_AGENT_BASE_DELAY_MS,
 		});
 	});
@@ -56,10 +65,14 @@ describe("resolveRetrySettings — missing/empty input falls back to defaults", 
 	test("individual undefined fields fall back per-field", () => {
 		expect(resolveRetrySettings({ maxAttempts: 7 })).toEqual({
 			maxRetries: 7,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 		expect(resolveRetrySettings({ baseDelayMs: 5000 })).toEqual({
 			maxRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: 5000,
 		});
 	});
@@ -69,6 +82,8 @@ describe("resolveRetrySettings — happy path within range", () => {
 	test("exact valid values pass through", () => {
 		expect(resolveRetrySettings({ maxAttempts: 5, baseDelayMs: 3000 })).toEqual({
 			maxRetries: 5,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: 3000,
 		});
 	});
@@ -133,12 +148,16 @@ describe("resolveRetrySettings — garbage inputs never throw and fall back", ()
 			resolveRetrySettings({ maxAttempts: Infinity, baseDelayMs: Infinity }),
 		).toEqual({
 			maxRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 		expect(
 			resolveRetrySettings({ maxAttempts: -Infinity, baseDelayMs: -Infinity }),
 		).toEqual({
 			maxRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});
@@ -176,11 +195,15 @@ describe("resolveRetrySettings — garbage inputs never throw and fall back", ()
 		// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 		expect(resolveRetrySettings("broken" as any)).toEqual({
 			maxRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 		// biome-ignore lint/suspicious/noExplicitAny: testing runtime garbage
 		expect(resolveRetrySettings(42 as any)).toEqual({
 			maxRetries: DEFAULT_MAX_RETRIES,
+			maxStallRetries: DEFAULT_MAX_RETRIES,
+			maxTransientRetries: DEFAULT_MAX_TRANSIENT_RETRIES,
 			baseDelayMs: DEFAULT_CHAT_BASE_DELAY_MS,
 		});
 	});

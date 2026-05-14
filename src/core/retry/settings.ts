@@ -16,7 +16,7 @@ export interface ResolvedRetrySettings {
   baseDelayMs: number;
 }
 
-const DEFAULT_MAX_TRANSIENT_RETRIES = 3;
+export const DEFAULT_MAX_TRANSIENT_RETRIES = 3;
 
 /**
  * Pure, defensive resolver for user-supplied retry config.
