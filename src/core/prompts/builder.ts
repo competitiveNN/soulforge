@@ -86,7 +86,10 @@ export function buildSystemPrompt(opts: PromptBuilderOptions): string {
   }
 
   // 3. Working directory and environment (stable — never changes during a session)
-  if (opts.cwd) parts.push(`Working directory: ${opts.cwd}`);
+  if (opts.cwd)
+    parts.push(
+      `Working directory: ${opts.cwd} (shell commands already run here — do not prepend \`cd ${opts.cwd}\`)`,
+    );
   if (opts.hasGhCli)
     parts.push("GitHub CLI (gh) is available. Use it for PRs, issues, and GitHub API operations.");
 
