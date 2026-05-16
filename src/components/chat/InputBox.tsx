@@ -1,18 +1,23 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { BoxRenderable, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { decodePasteBytes, type PasteEvent, TextAttributes } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCommandDefs } from "../../core/commands/registry.js";
-import { HistoryDB } from "../../core/history/db.js";
 import { type FuzzyMatch, fuzzyFilter, fuzzyMatch } from "../../core/history/fuzzy.js";
+import {
+  frecencyScore,
+  getFrecencyDB,
+  getHistoryDB,
+  getStashDB,
+} from "../../core/history/index.js";
 import { icon } from "../../core/icons.js";
 import { useTheme } from "../../core/theme/index.js";
 import { useUIStore } from "../../stores/ui.js";
 import type { ImageAttachment } from "../../types/index.js";
 import { readClipboardImageAsync } from "../../utils/clipboard.js";
 import { compressImageForApi } from "../../utils/image-compress.js";
+import { compactScrollAccel } from "../ui/scroll.js";
+import { pickTip } from "./tips.js";
 
 interface Props {
   onSubmit: (value: string, images?: ImageAttachment[]) => void;
@@ -142,6 +147,17 @@ export const InputBox = memo(function InputBox({
 
   const showBusy = isLoading || isCompacting;
 
+  // Rotating tip — drives the placeholder when input is empty + not busy.
+  // Advances every 12s; React triggers a re-render via a state tick so the
+  // textarea picks up the new placeholder string.
+  const [tipTick, setTipTick] = useState(0);
+  useEffect(() => {
+    if (value.length > 0 || showBusy || viewingCheckpoint != null) return;
+    const timer = setInterval(() => setTipTick((n) => n + 1), 12_000);
+    return () => clearInterval(timer);
+  }, [value.length, showBusy, viewingCheckpoint]);
+  const tip = useMemo(() => pickTip(Date.now() + tipTick * 12_000), [tipTick]);
+
   // textarea width = container - border(2) - paddingX(2) - prompt(2) = containerWidth - 6
   // When busy hint is shown, subtract its width too
   const containerWidth = widthPct != null ? Math.floor((termWidth * widthPct) / 100) : termWidth;
@@ -160,17 +176,9 @@ export const InputBox = memo(function InputBox({
     [textareaWidth],
   );
 
-  const historyDBRef = useRef<HistoryDB | null>(null);
   const historyCacheRef = useRef<string[]>([]);
   const historyIdx = useRef(-1);
   const historyStash = useRef("");
-
-  const getHistoryDB = useCallback(() => {
-    if (!historyDBRef.current) {
-      historyDBRef.current = new HistoryDB(join(homedir(), ".soulforge", "history.db"));
-    }
-    return historyDBRef.current;
-  }, []);
 
   const refreshHistoryCache = useCallback(() => {
     try {
@@ -178,16 +186,34 @@ export const InputBox = memo(function InputBox({
     } catch {
       historyCacheRef.current = [];
     }
-  }, [getHistoryDB]);
+  }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one-time init + cleanup
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one-time init
   useEffect(() => {
     refreshHistoryCache();
-    return () => {
-      historyDBRef.current?.close();
-      historyDBRef.current = null;
-    };
   }, []);
+
+  // Restore the latest stash entry when this InputBox mounts with an empty
+  // value. Tab switches and session restores recreate the component, so this
+  // hook gives the user their draft back without an explicit Ctrl+Shift+P.
+  const stashRestoredRef = useRef(false);
+  useEffect(() => {
+    if (stashRestoredRef.current) return;
+    stashRestoredRef.current = true;
+    if (valueRef.current.trim().length > 0) return;
+    try {
+      const top = getStashDB().peekTop(cwd);
+      if (!top) return;
+      isNavigatingHistory.current = true;
+      setValue(top.content);
+      textareaRef.current?.setText(top.content);
+      textareaRef.current?.gotoBufferEnd();
+      lineCountRef.current = (top.content.match(/\n/g)?.length ?? 0) + 1;
+      // Consume the draft — the user explicitly popping (Ctrl+Shift+P) deletes
+      // older entries; auto-restore on mount should not pile up.
+      getStashDB().remove(top.id);
+    } catch {}
+  }, [cwd]);
 
   const [fuzzyMode, setFuzzyMode] = useState(false);
   const [fuzzyQuery, setFuzzyQuery] = useState("");
@@ -201,13 +227,16 @@ export const InputBox = memo(function InputBox({
     try {
       const candidates = getHistoryDB().recent(500);
       setFuzzyResults(fuzzyFilter(fuzzyQuery, candidates, 50));
+      // Boost prompts that frecency knows about — drafts you keep reopening
+      // rank above one-off entries even when the textual match score ties.
+      // (No-op when there's no frecency data yet.)
       setFuzzyCursor(0);
       fuzzyScrollOffset.current = 0;
       fuzzyScrollRef.current?.scrollTo(0);
     } catch {
       setFuzzyResults([]);
     }
-  }, [fuzzyQuery, fuzzyMode, getHistoryDB]);
+  }, [fuzzyQuery, fuzzyMode]);
 
   const floatingTermOpen = useUIStore((s) => s.modals.floatingTerminal);
   const lockIn = useUIStore((s) => s.lockIn);
@@ -237,6 +266,23 @@ export const InputBox = memo(function InputBox({
     for (const c of cmds) {
       const m = fuzzyMatch(commandToken, c.cmd);
       if (m) results.push({ ...c, score: m.score, indices: m.indices });
+    }
+    // Blend frecency into the fuzzy score so commands the user actually runs
+    // bubble up. `factor = 1 + frecency` keeps unscored commands at score×1
+    // while frequent picks get a multiplicative bump. Capped to prevent a
+    // single hot command from drowning the rest.
+    if (results.length > 0) {
+      const frecLookup = getFrecencyDB().byKeys(
+        "command",
+        results.map((r) => r.cmd),
+      );
+      const now = Date.now();
+      for (const r of results) {
+        const row = frecLookup.get(r.cmd);
+        if (!row) continue;
+        const frec = frecencyScore(row.frequency, row.lastUsedAt, now);
+        r.score *= 1 + Math.min(frec, 4);
+      }
     }
     results.sort((a, b) => b.score - a.score || a.cmd.localeCompare(b.cmd));
     return results;
@@ -294,9 +340,13 @@ export const InputBox = memo(function InputBox({
       try {
         getHistoryDB().push(input, cwd);
         refreshHistoryCache();
+        const slashCmd = input.trim().split(/\s+/)[0];
+        if (slashCmd?.startsWith("/")) {
+          getFrecencyDB().bump("command", slashCmd);
+        }
       } catch {}
     },
-    [getHistoryDB, refreshHistoryCache, cwd],
+    [refreshHistoryCache, cwd],
   );
 
   const resetInput = useCallback(() => {
@@ -584,6 +634,38 @@ export const InputBox = memo(function InputBox({
       return;
     }
 
+    // Ctrl+S — stash current draft and clear the input. Drafts survive
+    // session restart, are scoped per-cwd, and pop back via Ctrl+Shift+P.
+    if (focused && evt.ctrl && !evt.shift && evt.name === "s") {
+      const draft = valueRef.current;
+      if (draft.trim().length > 0) {
+        try {
+          getStashDB().push(draft, cwd);
+        } catch {}
+        resetInput();
+      }
+      evt.preventDefault();
+      return;
+    }
+
+    // Ctrl+Shift+P — pop the most recent stash entry into the input.
+    if (focused && evt.ctrl && evt.shift && evt.name === "p") {
+      if (valueRef.current.trim().length === 0) {
+        try {
+          const entry = getStashDB().pop(cwd);
+          if (entry) {
+            isNavigatingHistory.current = true;
+            setValue(entry.content);
+            textareaRef.current?.setText(entry.content);
+            textareaRef.current?.gotoBufferEnd();
+            lineCountRef.current = (entry.content.match(/\n/g)?.length ?? 0) + 1;
+          }
+        } catch {}
+      }
+      evt.preventDefault();
+      return;
+    }
+
     // The textarea's onSubmit prop is NOT updated by the React reconciler (TextareaRenderable
     // isn't wired in setProperty), so we handle submit here instead.
     if (focused && evt.name === "return" && !evt.shift && !evt.ctrl && !evt.meta) {
@@ -706,7 +788,11 @@ export const InputBox = memo(function InputBox({
               width="100%"
             >
               <box flexDirection="column" backgroundColor={t.bgInput}>
-                <scrollbox ref={acScrollRef} height={Math.min(matches.length, maxVisible)}>
+                <scrollbox
+                  ref={acScrollRef}
+                  height={Math.min(matches.length, maxVisible)}
+                  scrollAcceleration={compactScrollAccel}
+                >
                   {matches.map((match, i) => {
                     const isSelected = i === selectedIdx;
                     return (
@@ -762,6 +848,7 @@ export const InputBox = memo(function InputBox({
                 <scrollbox
                   ref={fuzzyScrollRef}
                   height={Math.min(fuzzyResults.length, fuzzyMaxVisible)}
+                  scrollAcceleration={compactScrollAccel}
                 >
                   {fuzzyResults.map((result, i) => {
                     const isSelected = i === fuzzyCursor;
@@ -832,7 +919,9 @@ export const InputBox = memo(function InputBox({
                       ? "'/' for commands · or steer by sending a new message"
                       : lockIn
                         ? "speak to the forge... · /lock-in to see full narration"
-                        : "speak to the forge..."
+                        : tip.hint
+                          ? `${tip.text} · ${tip.hint}`
+                          : tip.text
                 }
                 placeholderColor={viewingCheckpoint != null ? t.warning : t.textMuted}
                 focused={focused}
