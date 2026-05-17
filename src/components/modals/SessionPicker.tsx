@@ -13,6 +13,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type SessionListEntry, SessionManager } from "../../core/sessions/manager.js";
 import { useTheme } from "../../core/theme/index.js";
+import { selectHasDialog, useDialogStore } from "../../stores/dialog.js";
 import { timeAgo } from "../../utils/time.js";
 import { Spinner } from "../layout/shared.js";
 import { confirm } from "../ui/dialogs/index.js";
@@ -128,8 +129,13 @@ export function SessionPicker({ visible, cwd, onClose, onRestore, onSystemMessag
     setTimeout(() => setFlash(null), 2000);
   };
 
+  const hasDialog = useDialogStore(selectHasDialog);
+
   useKeyboard((evt) => {
     if (!visible) return;
+    // A dialog (confirm/alert/select) is on top — it owns the keyboard.
+    // opentui's useKeyboard is a global broadcast, so we must bail explicitly.
+    if (hasDialog) return;
 
     // Rename mode — absorbs keystrokes
     if (renameId) {

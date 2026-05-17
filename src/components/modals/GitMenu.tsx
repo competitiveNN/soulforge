@@ -8,6 +8,7 @@ import {
   gitStash,
   gitStashPop,
 } from "../../core/git/status.js";
+import { selectHasDialog, useDialogStore } from "../../stores/dialog.js";
 import { confirm } from "../ui/dialogs/index.js";
 import {
   buildGroupedRows,
@@ -182,8 +183,12 @@ export function GitMenu({
     }
   };
 
+  const hasDialog = useDialogStore(selectHasDialog);
+
   useKeyboard((evt) => {
     if (!visible || busyRef.current) return;
+    // A confirm/alert/select sits on top — it owns the keyboard.
+    if (hasDialog) return;
 
     if (evt.name === "escape") {
       onClose();
