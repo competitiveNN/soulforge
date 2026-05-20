@@ -15,6 +15,7 @@ import type {
   MemoryRecord,
   MemoryScope,
   MemoryScopeConfig,
+  MemoryIndex,
 } from "./types.js";
 
 export interface CleanupTracker {
@@ -336,8 +337,8 @@ export class MemoryManager {
   }
 
   buildMemoryIndex(): string | null {
-    let projectIdx;
-    let globalIdx;
+    let projectIdx: MemoryIndex;
+    let globalIdx: MemoryIndex;
     try {
       projectIdx = this.projectDb.getIndex();
       globalIdx = this.globalDb.getIndex();
