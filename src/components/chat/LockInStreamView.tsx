@@ -407,14 +407,17 @@ export const LockInLiveAutoView = memo(function LockInLiveAutoView({
     [liveToolCalls],
   );
 
-  // "Thinking…" trailing row: rail is up, every tool is done, the model has
-  // not yet committed to the final answer, and no dispatch is mid-flight.
-  // That gap = narration tokens streaming with no visible surface.
+  // "Thinking…" trailing row: rail is up, every tool is done, no dispatch is
+  // mid-flight, and no final-answer text has streamed yet. Covers two gaps:
+  //   1. Pre-commit narration (tools done, set_lockin not yet called).
+  //   2. Post-commit silence (set_lockin fired but final text hasn't arrived).
+  // Without (2), the rail freezes on "+N completed" with no spinner — looks
+  // like a hang for the entire stretch between the last tool and the answer.
   const allToolsDone = tools.length > 0 && tools.every((t) => t.done);
   const dispatchActive = liveToolCalls.some(
     (tc) => SUBAGENT_NAMES.has(tc.toolName) && tc.state === "running",
   );
-  const pendingNarration = allToolsDone && !dispatchActive && committedAt === null;
+  const pendingNarration = allToolsDone && !dispatchActive && !trailingText;
 
   if (chatOnlyText) {
     return (
