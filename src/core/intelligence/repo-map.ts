@@ -44,6 +44,7 @@ interface FileRow {
   line_count: number;
   symbol_count: number;
   pagerank: number;
+  is_barrel?: number;
 }
 
 interface SymbolRow {
@@ -3256,8 +3257,8 @@ export class RepoMap {
 
   private rankFiles(opts: RepoMapOptions): FileRow[] {
     const allFiles = this.db
-      .query<FileRow, []>(
-        "SELECT id, path, mtime_ms, language, line_count, symbol_count, pagerank FROM files ORDER BY pagerank DESC",
+      .query<FileRow & { is_barrel?: number }, []>(
+        "SELECT id, path, mtime_ms, language, line_count, symbol_count, pagerank, is_barrel FROM files ORDER BY pagerank DESC",
       )
       .all();
 
@@ -3293,6 +3294,38 @@ export class RepoMap {
     // PageRank already incorporates mentioned/edited/editor boosts via personalization.
     // Post-hoc: add FTS, neighbor, and co-change signals that PageRank can't capture.
     const contextFileIds = new Set([...boostFileIds, ...neighborFiles]);
+
+    // Type-ratio penalty: files dominated by type/interface declarations get
+    // inflated PageRank because every consumer imports their types. Compute
+    // a single GROUP BY over the candidate files and demote when type kinds
+    // make up >66% of the file's symbols. Language-neutral: uses normalized
+    // tree-sitter kinds shared across TS/Rust/Go/Java/etc. Languages without
+    // a structural-type kind see no penalty (ratio = 0).
+    const candidateIds = allFiles
+      .filter((f) => f.symbol_count >= 5 && !contextFileIds.has(f.id))
+      .map((f) => f.id);
+    const typeRatios = new Map<number, number>();
+    if (candidateIds.length > 0) {
+      try {
+        const placeholders = candidateIds.map(() => "?").join(",");
+        const rows = this.db
+          .query<{ file_id: number; type_count: number; total: number }, number[]>(
+            `SELECT file_id,
+                    SUM(CASE WHEN kind IN ('interface','type','enum','trait') THEN 1 ELSE 0 END) as type_count,
+                    COUNT(*) as total
+             FROM symbols
+             WHERE file_id IN (${placeholders})
+             GROUP BY file_id`,
+          )
+          .all(...candidateIds);
+        for (const r of rows) {
+          if (r.total > 0) typeRatios.set(r.file_id, r.type_count / r.total);
+        }
+      } catch {
+        // Query failure → no penalty applied → falls back to legacy ranking.
+      }
+    }
+
     const scored = allFiles
       .filter((f) => {
         // Skip config/data files with no symbols unless they're in the conversation context
@@ -3304,6 +3337,13 @@ export class RepoMap {
         if (neighborFiles.has(f.id)) score += 1;
         const cochangeCount = coChangePartners.get(f.id);
         if (cochangeCount) score += Math.min(cochangeCount / 5, 3);
+        // Apply structural-type penalty only outside the conversation context —
+        // context files should always surface regardless of their kind makeup.
+        if (!contextFileIds.has(f.id)) {
+          const ratio = typeRatios.get(f.id) ?? 0;
+          if (ratio > 0.66) score *= 0.5;
+          if (f.is_barrel === 1 && f.symbol_count < 10) score *= 0.6;
+        }
         return { ...f, score };
       });
 
