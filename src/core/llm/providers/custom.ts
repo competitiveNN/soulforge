@@ -11,7 +11,13 @@ import type {
 interface OpenAIModelListEntry {
   id: string;
   owned_by?: string;
-  context_window?: number;
+  /** OpenAI-compatible servers that return a top-level context length field.
+   *  OpenRouter uses `context_length`. OpenAI / vLLM / Ollama omit it entirely. */
+  context_length?: number;
+  /** LiteLLM nests context length under model_info (number or stringified number). */
+  model_info?: {
+    max_input_tokens?: number | string;
+  };
 }
 
 /**
@@ -39,6 +45,7 @@ function normalizeBaseURLPath(baseURL: string): string {
  *      Returns null only when `baseURL` itself is absent (should not happen in practice).
  */
 function resolveModelsAPIUrl(config: CustomProviderConfig): string | null {
+  if (config.modelsAPI === false) return null;
   if (config.modelsAPI) return config.modelsAPI;
   const normalized = normalizeBaseURLPath(config.baseURL);
   return `${normalized}/models`;
@@ -95,7 +102,7 @@ export function buildCustomProvider(config: CustomProviderConfig): ProviderDefin
       try {
         res = await fetch(modelsUrl, {
           headers,
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(2000),
         });
       } catch {
         return null;
@@ -110,11 +117,15 @@ export function buildCustomProvider(config: CustomProviderConfig): ProviderDefin
       }
       if (!Array.isArray(parsed.data)) return null;
 
-      return parsed.data.map((m) => ({
-        id: m.id,
-        name: m.id,
-        ...(typeof m.context_window === "number" ? { contextWindow: m.context_window } : {}),
-      }));
+      return parsed.data.map((m) => {
+        const rawContext = m.context_length ?? m.model_info?.max_input_tokens;
+        const contextWindow = typeof rawContext === "number" ? rawContext : Number(rawContext);
+        return {
+          id: m.id,
+          name: m.id,
+          ...(contextWindow !== undefined && !Number.isNaN(contextWindow) ? { contextWindow } : {}),
+        };
+      });
     },
 
     fallbackModels: normalizeModels(config.models),

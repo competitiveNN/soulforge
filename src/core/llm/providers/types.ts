@@ -68,7 +68,7 @@ export interface CustomProviderConfig {
   baseURL: string;
   envVar?: string;
   models?: (string | ProviderModelInfo)[];
-  modelsAPI?: string;
+  modelsAPI?: string | false;
   /** Reasoning/thinking configuration for this provider.
    *  Enables thinking control for models that support it via OpenAI-compatible APIs. */
   reasoning?: CustomReasoningConfig;
