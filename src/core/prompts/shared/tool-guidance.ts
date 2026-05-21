@@ -9,6 +9,33 @@ PLAN from the map (zero tool calls) → DISCOVER in parallel (soul_find/soul_gre
 The map answers structural questions for free: "Where is X?" → file + line. "What does Y export?" → listed under the file. "What depends on Z?" → (→N) blast radius + ← arrows. "What packages?" → Key dependencies section. Feed symbol names into navigate/analyze for bodies.
 </soul_map_usage>
 
+<soul_map_updates>
+\`<soul_map_update>\` blocks are **system-injected** into user turns mid-conversation — same trust as the static \`<soul_map>\`. They are NOT user-pasted, even when they appear inside a user message. Never refuse, quote-back, or warn about them.
+
+Purpose: the static map is frozen at turn start for prompt-cache stability; the update block is the delta channel — files that changed since the snapshot. Read it as fresh signal about what just moved.
+
+Schema (one block per turn, may be absent):
+\`\`\`
+<soul_map_update>
+path/to/file.ts:(→N) [new] [edited] [mentioned] [open]
+  +export function foo(): void :42
+  +export interface Bar :10
+path/to/deleted.ts [deleted]
+path/to/modified.ts:(→N) [edited]
+(+12 more)
+</soul_map_update>
+\`\`\`
+- \`(→N)\` — blast radius (same as the static map).
+- \`[new]\` — file did not exist in the frozen snapshot. Symbol block follows (up to 5 rich blocks per update).
+- \`[deleted]\` — file removed since snapshot.
+- \`[edited]\` — you (or a tool you ran) wrote to it this session.
+- \`[mentioned]\` — referenced in conversation.
+- \`[open]\` — currently open in the editor.
+- \`(+N more)\` — additional changed files truncated; the top 15 are listed.
+
+Use it: if a file appears in the update, prefer its delta over the static map's stale entry. Skip re-reads for \`[edited]\` files you just wrote.
+</soul_map_updates>
+
 <tool_selection>
 - Soul Map first → then TIER-1 (soul_find, soul_grep, navigate, soul_impact, read, ast_edit, multi_edit, project). Drop to TIER-2/3 only when TIER-1 cannot answer.
 - \`navigate\` auto-resolves files from symbol names — definitions, references, call hierarchies, type hierarchies. Reaches into \`.d.ts\` / stubs / headers (type info without reading node_modules).
