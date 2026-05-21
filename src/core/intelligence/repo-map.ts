@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { execSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, statSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { stat as statAsync } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { ensureSoulforgeDir } from "../utils/ensure-soulforge-dir.js";
@@ -2239,12 +2239,16 @@ export class RepoMap {
       // Java/Kotlin
       "src/main/java/Main.java",
       "src/main/kotlin/Main.kt",
+      // Scala (SBT layout)
+      "src/main/scala/Main.scala",
       // Swift
       "Sources/main.swift",
       "Sources/App.swift",
       // C/C++
       "src/main.c",
       "src/main.cpp",
+      // C# / .NET
+      "Program.cs",
       // Dart/Flutter
       "lib/main.dart",
       // Elixir
@@ -2252,7 +2256,30 @@ export class RepoMap {
       // Ruby
       "app.rb",
       "config.ru",
+      // PHP (Laravel / Symfony / generic front controllers)
+      "public/index.php",
+      "artisan",
+      "bin/console",
+      "index.php",
+      // Zig
+      "src/main.zig",
+      "build.zig",
+      // Haskell
+      "app/Main.hs",
+      "src/Main.hs",
+      "Main.hs",
+      // Elm
+      "src/Main.elm",
     ];
+    // Cargo: additional bins under src/bin/*.rs (auto-discovered by Cargo)
+    try {
+      const binsDir = join(this.cwd, "src", "bin");
+      if (existsSync(binsDir)) {
+        for (const entry of readdirSync(binsDir)) {
+          if (entry.endsWith(".rs")) commonEntryPoints.push(`src/bin/${entry}`);
+        }
+      }
+    } catch {}
     for (const p of commonEntryPoints) {
       if (existsSync(join(this.cwd, p))) this.entryPointsCache.push(p);
     }
