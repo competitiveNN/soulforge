@@ -15,11 +15,8 @@ SoulForge is fueled by people and companies who believe code deserves to be trea
 Premium partners. Logos appear in the README and on this page.
 
 <Card title="LLM Gateway" href="https://llmgateway.io/dashboard?ref=6tjJR2H3X4E9RmVQiQwK">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="/images/llmg-white.svg" />
-    <source media="(prefers-color-scheme: light)" srcset="/images/llmg-dark.svg" />
-    <img alt="LLM Gateway" src="/images/llmg-dark.svg" height="60" />
-  </picture>
+  <img alt="LLM Gateway" src="/images/llmg-dark.svg" height="60" className="block dark:hidden" />
+  <img alt="LLM Gateway" src="/images/llmg-white.svg" height="60" className="hidden dark:block" />
 
   One API for OpenAI, Anthropic, Google, and 30+ providers. **Up to 30% off frontier models**, real-time cost analytics, bring-your-own-keys, open-source and self-hostable. SoulForge ships an `llmgateway` provider out of the box.
 </Card>
@@ -74,9 +71,12 @@ One-time supporters at the $10 / $50 tier. Thank you for tossing a coin in — e
 
 ---
 
-<CardGroup cols={2}>
-  <Card title="Sponsor on GitHub" icon="github" href="https://github.com/sponsors/proxysoul">
-    Monthly tiers from $5 to $1,000. Cancel anytime.
+<CardGroup cols={3}>
+  <Card title="Monthly on GitHub" icon="github" href="https://github.com/sponsors/proxysoul">
+    Recurring tiers from \$5 to \$1,000. Cancel anytime.
+  </Card>
+  <Card title="One-time on GitHub" icon="github" href="https://github.com/sponsors/proxysoul">
+    Prefer a single contribution? GitHub Sponsors supports one-time too.
   </Card>
   <Card title="One-time on PayPal" icon="paypal" href="https://paypal.me/waeru">
     Toss a coin in the jar. Get listed in BACKERS.md.

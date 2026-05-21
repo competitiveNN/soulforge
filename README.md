@@ -115,7 +115,7 @@ Same model (Claude Opus 4.6), same codebase, same prompt.
 
 <br/>
 
-<sub><a href="https://github.com/sponsors/proxysoul">Sponsor on GitHub</a> · <a href="https://paypal.me/waeru">PayPal</a> · <a href="BACKERS.md">All backers</a></sub>
+<sub><a href="https://github.com/sponsors/proxysoul">Sponsor on GitHub</a> (monthly or one-time) · <a href="https://paypal.me/waeru">PayPal</a> (one-time) · <a href="BACKERS.md">All backers</a></sub>
 
 </div>
 

@@ -33,6 +33,12 @@
             ]
           },
           {
+            "group": "Sponsors",
+            "pages": [
+              "sponsors"
+            ]
+          },
+          {
             "group": "Recipes",
             "pages": [
               "recipes/rename-refactor",
@@ -93,14 +99,8 @@
               "reference/configuration",
               "troubleshooting"
             ]
-          },
-          {
-            "group": "Community",
-            "pages": [
-              "sponsors"
-            ]
           }
-        ]
+          ]
       }
     ],
     "global": {

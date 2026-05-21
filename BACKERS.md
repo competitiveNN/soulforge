@@ -95,6 +95,6 @@ One-time supporters at the $10 / $50 tier. Thank you for tossing a coin in — e
 
 **Thank you for keeping the fire lit.** 🔥
 
-[Sponsor SoulForge](https://github.com/sponsors/proxysoul) · [PayPal](https://paypal.me/waeru) · [Read the docs](https://soulforge.proxysoul.com)
+[Sponsor SoulForge](https://github.com/sponsors/proxysoul) (monthly or one-time) · [PayPal](https://paypal.me/waeru) (one-time) · [Read the docs](https://soulforge.proxysoul.com)
 
 </div>
