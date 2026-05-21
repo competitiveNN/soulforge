@@ -142,19 +142,17 @@ process.on("exit", () => {
 });
 
 /**
- * Re-raise a caught signal so the parent shell sees a true signal death
- * (WIFSIGNALED=true) instead of a normal exit with code 128+N.
- * This prevents shells like fish from printing spurious
- * "terminated by signal" messages.
- * See: https://unix.stackexchange.com/questions/386836
+ * Handle a caught signal: flush state, restore terminal, print exit banner,
+ * then exit cleanly. We intentionally do NOT re-raise the signal — doing so
+ * causes the parent shell (zsh, bash) to print "terminated sf" on the next
+ * line, which scrolls past our exit banner.
  */
-function reraiseSignal(signal: NodeJS.Signals): void {
+function reraiseSignal(_signal: NodeJS.Signals): void {
   flushEmergencySession();
   runCleanup();
   renderer?.destroy();
   printExitBanner();
-  process.removeAllListeners(signal);
-  process.kill(process.pid, signal);
+  process.exit(0);
 }
 
 process.on("SIGINT", () => reraiseSignal("SIGINT"));
