@@ -2,6 +2,40 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.17.0] — 2026-05-22
+
+### Bug Fixes
+
+- **exit**: print banner on Ctrl+C in installed binary
+- **router**: full provider/model id + dedicated Tools section
+- **sessions**: UI must be superset of model view — guard against messages.jsonl truncation
+- **sessions**: stop restore loop, cap tabs, preserve progress
+### Documentation
+
+- **prompt**: enforce strict lockin ordering before final answer
+- **prompt**: document soul_map_update delta channel
+### Features
+
+- **context**: session header only when foreign or post-compaction
+- **context**: entry points in snapshot + session header in delta
+- **context**: surface memory category next to delta files
+- **context**: delta provenance — modified-since-new + recent failures
+- **context**: freeze per-tab soul-map snapshot with explicit refresh boundary
+- **repo-map**: expand entry points to PHP, Zig, Haskell, Scala, C#, Elm
+- **repo-map**: rank delta file symbols by inbound call count
+- **tools**: expose web_search + fetch_page to ember explore agents
+### Miscellaneous
+
+- **useChat**: formatter touch-ups on dependency arrays
+### Performance
+
+- **repo-map**: warm-start PageRank with prior vector + L1 early-stop
+- **sqlite**: index edges by target + PRAGMA optimize on close
+### Refactor
+
+- **context**: provider-aware soul-map snapshot with idle TTL
+- **repo-map**: index bare filenames + dotfiles via detectLanguageFromPath
+- **repo-map**: consolidate language detection, skip non-code from pagerank
 ## [2.16.5] — 2026-05-21
 
 ### Bug Fixes
