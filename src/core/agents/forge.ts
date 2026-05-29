@@ -581,10 +581,7 @@ function buildForgePrepareStep(
   };
 }
 
-const instructionsCache = new WeakMap<
-  ContextManager,
-  { text: string; key: string }
->();
+const instructionsCache = new WeakMap<ContextManager, { text: string; key: string }>();
 
 function buildInstructions(cm: ContextManager, modelId: string): string {
   const key = cm.getInstructionsCacheKey(modelId);

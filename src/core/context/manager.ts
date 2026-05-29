@@ -81,8 +81,8 @@ export class ContextManager {
   private mentionedFiles = new Set<string>();
   // conversationTerms removed — FTS boosting was noisy, PageRank handles ranking
   private conversationTokens = 0;
-private contextWindowTokens = DEFAULT_CONTEXT_WINDOW;
-private lastInstructionsSize: number | undefined = undefined;
+  private contextWindowTokens = DEFAULT_CONTEXT_WINDOW;
+  private lastInstructionsSize: number | undefined = undefined;
   private repoMapCache: { content: string; at: number } | null = null;
   /** Changed files since snapshot, ordered by most recent edit (re-edits move to end). */
   private soulMapDiffChangedFiles = new Map<string, number>(); // rel path → edit sequence number
